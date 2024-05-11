@@ -546,7 +546,7 @@ class HFLMWithMeasurement(HFLM):
                         # for seq2seq case where self.tok_decode(self.eot_token_id) = ''
                         s = s.split(term)[0]
                 
-                print(s)
+                # print(s)
                 res.append((s, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu))
 
                 self.cache_hook.add_partial("generate_until", (context, gen_kwargs), s)
