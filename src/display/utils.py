@@ -18,12 +18,16 @@ GPU_Power = 'Power(W)'
 GPU_Mem = 'Mem(G)'
 GPU_Name = "GPU"
 GPU_Util = 'Util(%)'
+MFU = 'MFU(%)'
+MBU = 'MBU(%)'
 BATCH_SIZE = 'bs'
 PRECISION = "Precision"
 system_metrics_to_name_map = {
     "end_to_end_time": f"{E2Es}",
     "prefilling_time": f"{PREs}",
     "decoding_throughput": f"{TS}",
+    "mfu": f"{MFU}",
+    "mbu": f"{MBU}"
 }
 
 gpu_metrics_to_name_map = {
@@ -75,7 +79,7 @@ class Tasks(Enum):
     # # XXX include me back at some point
     selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
     mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
-    gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (8-shot)
+    gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
 
 
 # These classes are for user facing column names,
