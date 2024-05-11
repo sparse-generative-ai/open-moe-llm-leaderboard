@@ -1,0 +1,2 @@
+task: selfcheckgpt
+class: !function task.SelfCheckGPT

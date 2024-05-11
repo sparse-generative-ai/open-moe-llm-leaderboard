@@ -1,0 +1,2 @@
+task: xsum_v2
+class: !function task_v2.XSumv2

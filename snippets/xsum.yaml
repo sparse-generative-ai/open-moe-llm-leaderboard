@@ -1,0 +1,49 @@
+task: xsum
+dataset_path: EdinburghNLP/xsum
+dataset_name: xsum
+output_type: generate_until
+training_split: train
+validation_split: validation
+test_split: test
+doc_to_text: "Document: {{document}}\nSummary:"
+doc_to_target: "{{summary}}"
+# process_docs: !function utils.process_docs
+process_results: !function utils.process_results
+should_decontaminate: True
+doc_to_decontamination_query: document
+generation_kwargs:
+  until:
+    - "\n"
+    - "."
+  do_sample: false
+  temperature: 0.0
+metric_list:
+  - metric: rouge1_max
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge1_acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge1_diff
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge2_max
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge2_acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge2_diff
+    aggregation: mean
+    higher_is_better: true
+  - metric: rougeL_max
+    aggregation: mean
+    higher_is_better: true
+  - metric: rougeL_acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: rougeL_diff
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  - version: 0.0

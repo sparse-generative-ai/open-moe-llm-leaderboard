@@ -1,0 +1,16 @@
+task: fever11
+dataset_path: pminervini/hl-fever
+dataset_name: v1.0
+output_type: multiple_choice
+training_split: train
+validation_split: dev
+test_split: null
+doc_to_text: "Claim: {{claim}}\nLabel:"
+doc_to_choice: ["supported", "refuted"]
+doc_to_target: label
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0.0

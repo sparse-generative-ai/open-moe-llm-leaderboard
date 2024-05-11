@@ -1,0 +1,2 @@
+task: cnndm_v2
+class: !function task_v2.CNNDMv2

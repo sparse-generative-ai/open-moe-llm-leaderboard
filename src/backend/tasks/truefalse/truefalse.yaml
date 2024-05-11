@@ -1,0 +1,13 @@
+task: truefalse_cieacf
+dataset_path: pminervini/true-false
+dataset_name: default
+validation_split: cieacf
+output_type: multiple_choice
+doc_to_text: "Statement: {{statement}}\nLabel:"
+doc_to_target: label
+doc_to_choice: ["false", "true"]
+metric_list:
+  - metric: acc
+    higher_is_better: True
+metadata:
+  version: 0.0

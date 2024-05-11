@@ -1,0 +1,2 @@
+task: cnndm
+class: !function task.CNNDM

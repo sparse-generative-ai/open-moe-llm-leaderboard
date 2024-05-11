@@ -1,0 +1,20 @@
+task: memo-trap_v2
+dataset_path: pminervini/inverse-scaling
+dataset_name: memo-trap
+output_type: multiple_choice
+training_split: null
+validation_split: data
+test_split: null
+# num_fewshot: 0
+doc_to_text: "{{prompt}}"
+doc_to_target: answer_index
+doc_to_choice: "{{classes}}"
+target_delimiter: ""
+should_decontaminate: False
+doc_to_decontamination_query: prompt
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0.0
