@@ -368,6 +368,8 @@ class HFLMWithMeasurement(HFLM):
         else:
             if hasattr(model_config, "ff_ratio"):
                 d_ff = d_model + model_config.ff_ratio
+            else:
+                raise ValueError("Unknown FFN dimension")
         
         if hasattr(model_config, "num_local_experts"):
             num_experts = model_config.num_local_experts
