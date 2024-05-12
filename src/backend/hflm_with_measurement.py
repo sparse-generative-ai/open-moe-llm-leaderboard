@@ -397,7 +397,7 @@ class HFLMWithMeasurement(HFLM):
         prefilling_time = stop_watch.prefilling_time / batch_size
         decoding_time = stop_watch.decoding_time / batch_size
         token_per_sec = output_length / decoding_time
-        ach_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
+        achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
         flops_per_token = 2 * model_size + 2 * n_layers * context_length * d_model + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
@@ -405,7 +405,7 @@ class HFLMWithMeasurement(HFLM):
         
         ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
         mfu = token_per_sec * flops_per_token / peak_flops
-        mbu = ach_mem_bw / peak_bw
+        mbu = achieve_mem_bw / peak_bw
         
         # print(f"mfu: {mfu}, mbu: {mbu}")
         
