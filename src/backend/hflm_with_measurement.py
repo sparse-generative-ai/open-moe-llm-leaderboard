@@ -366,7 +366,8 @@ class HFLMWithMeasurement(HFLM):
         elif hasattr(model_config, "d_ff"):
             d_ff = model_config.d_ff
         else:
-            raise ValueError("Unknown ffn dim model configuration")
+            if hasattr(model_config, "ff_ratio"):
+                d_ff = d_model + model_config.ff_ratio
         
         if hasattr(model_config, "num_local_experts"):
             num_experts = model_config.num_local_experts
@@ -386,7 +387,9 @@ class HFLMWithMeasurement(HFLM):
         peak_bw_single = get_peak_bw(get_gpu_details())
         peak_bw = peak_bw_single * get_gpu_number()
         
-        kv_size = (output_length - 1) * per_token_kv_size / 1e9
+        kv_size = (output_length - 1) * per_token_kv_size / 2e9
+        
+        n_vocab = model_config.vocab_size
 
         end_to_end_time = (end - start) / batch_size
         prefilling_time = stop_watch.prefilling_time / batch_size
@@ -394,7 +397,7 @@ class HFLMWithMeasurement(HFLM):
         token_per_sec = output_length / decoding_time
         ach_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
-        flops_per_token = 2 * model_size + 2 * n_layers * context_length * d_model
+        flops_per_token = 2 * model_size + 2 * n_layers * context_length * d_model + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * get_gpu_number()
         
