@@ -315,7 +315,11 @@ class HFLMWithMeasurement(HFLM):
         #     generation_kwargs.pop("is_gsm8k")
             
         context_length = context.shape[1]
-        model_config = self.model.config
+
+        if self.model.__class__.__name__ == "MoE":
+            model_config = self.model.model.config
+        else:
+            model_config = self.model.config
         
         if not self.precision:
             if model_config.quantization_config._load_in_4bit:
@@ -410,7 +414,7 @@ class HFLMWithMeasurement(HFLM):
         mfu = token_per_sec * flops_per_token / peak_flops
         mbu = achieve_mem_bw / peak_bw
         
-        print(f"mfu: {mfu}, mbu: {mbu}")
+        # print(f"mfu: {mfu}, mbu: {mbu}")
         
         return res, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu
 

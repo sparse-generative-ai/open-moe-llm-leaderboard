@@ -31,8 +31,9 @@ class MoEHFLM(HFLMWithMeasurement):
         self.use_chat_template = use_chat_template
         if "device" in kwargs:
             kwargs.pop("device")
+        kwargs["device_map"] = "cuda:0"
         super().__init__(
-            *args, **kwargs, pretrained=pretrained, device_map="cuda:0"
+            *args, **kwargs, pretrained=pretrained
         )  # Assuming HFLM accepts a 'pretrained' arg and handles it
         # self._create_model()
         shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads"))
