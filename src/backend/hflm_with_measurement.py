@@ -367,7 +367,7 @@ class HFLMWithMeasurement(HFLM):
             d_ff = model_config.d_ff
         else:
             if hasattr(model_config, "ff_ratio"):
-                d_ff = d_model + model_config.ff_ratio
+                d_ff = d_model * model_config.ff_ratio
             else:
                 raise ValueError("Unknown FFN dimension")
         
@@ -389,7 +389,9 @@ class HFLMWithMeasurement(HFLM):
         peak_bw_single = get_peak_bw(get_gpu_details())
         peak_bw = peak_bw_single * get_gpu_number()
         
-        kv_size = (output_length - 1) * per_token_kv_size / 2e9
+        kv_size = (output_length - 1) * per_token_kv_size / 2
+        
+        kv_size = kv_size / 1e9
         
         n_vocab = model_config.vocab_size
 
@@ -399,7 +401,8 @@ class HFLMWithMeasurement(HFLM):
         token_per_sec = output_length / decoding_time
         achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
-        flops_per_token = 2 * model_size + 2 * n_layers * context_length * d_model + 4 * d_model + 2 * d_model * n_vocab
+        avg_context_length = (2 * context_length + output_length - 1) / 2
+        flops_per_token = 2 * model_size + (2 * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * get_gpu_number()
         
@@ -407,7 +410,7 @@ class HFLMWithMeasurement(HFLM):
         mfu = token_per_sec * flops_per_token / peak_flops
         mbu = achieve_mem_bw / peak_bw
         
-        # print(f"mfu: {mfu}, mbu: {mbu}")
+        print(f"mfu: {mfu}, mbu: {mbu}")
         
         return res, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu
 
