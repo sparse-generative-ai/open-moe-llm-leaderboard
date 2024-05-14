@@ -328,6 +328,23 @@ class HFLMWithMeasurement(HFLM):
                 self.precision = "8bit"
             else:
                 raise ValueError("Unknown precision")
+            
+        # print(self.model)
+        linear_count = 0 
+        for name, module in self.model.named_modules():
+            if ('layers.0.' in name or 'decoder.0.' in name) and ('attn' not in name):
+                if 'experts.0.' in name:
+                    if isinstance(module, torch.nn.Linear):
+                        # print(name, module)
+                        linear_count += 1
+                elif 'experts' not in name:
+                    if "gate" not in name or "gate_" in name:
+                        if isinstance(module, torch.nn.Linear):
+                            # print(name, module)
+                            linear_count += 1
+                else:
+                    continue
+        print(f"linear_count: {linear_count}")
 
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
@@ -382,7 +399,7 @@ class HFLMWithMeasurement(HFLM):
         else:
             num_experts = 1
             
-        ffn_params = n_layers * d_ff * 2 * d_model
+        ffn_params = n_layers * d_ff * linear_count * d_model
         
         shared_params = model_size_param * 1e9 - num_experts * ffn_params
 
@@ -393,7 +410,8 @@ class HFLMWithMeasurement(HFLM):
         peak_bw_single = get_peak_bw(get_gpu_details())
         peak_bw = peak_bw_single * get_gpu_number()
         
-        kv_size = (output_length - 1) * per_token_kv_size / 2
+        context_prefill_size = context_length
+        kv_size = (2 * context_prefill_size + output_length - 1) * per_token_kv_size / 2
         
         kv_size = kv_size / 1e9
         
@@ -414,7 +432,7 @@ class HFLMWithMeasurement(HFLM):
         mfu = token_per_sec * flops_per_token / peak_flops
         mbu = achieve_mem_bw / peak_bw
         
-        # print(f"mfu: {mfu}, mbu: {mbu}")
+        print(f"mfu: {mfu}, mbu: {mbu}")
         
         return res, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu
 
