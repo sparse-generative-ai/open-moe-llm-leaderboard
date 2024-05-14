@@ -31,15 +31,20 @@ class MoEHFLM(HFLMWithMeasurement):
         self.use_chat_template = use_chat_template
         if "device" in kwargs:
             kwargs.pop("device")
+        if os.path.exists(os.path.join(self.offload_path, "moe-infinity-offloads")):
+            shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads"))
         super().__init__(
             *args, **kwargs, pretrained=pretrained, device_map="cuda:0"
-        )  # Assuming HFLM accepts a 'pretrained' arg and handles it
+    )  # Assuming HFLM accepts a 'pretrained' arg and handles it
         # self._create_model()
         shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads"))
 
     def __del__(self):
-        # Clean up offloaded models from self.offload_path
-        shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads"))
+        self._model.engine.clean_up() # clean up hooks
+        self._model.engine.archer_engine.clean_up_resources() # clean up resources
+        if os.path.exists(os.path.join(self.offload_path, "moe-infinity-offloads")):
+            shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads")) # clean up offload model
+
 
     def _create_model(self, *args, **kwargs):
         """
