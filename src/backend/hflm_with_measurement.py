@@ -331,6 +331,7 @@ class HFLMWithMeasurement(HFLM):
             
         # print(self.model)
         linear_count = 0 
+        element_wise_mul = 0
         for name, module in self.model.named_modules():
             if ('layers.0.' in name or 'decoder.0.' in name) and ('attn' not in name):
                 if 'experts.0.' in name:
@@ -338,7 +339,9 @@ class HFLMWithMeasurement(HFLM):
                         # print(name, module)
                         linear_count += 1
                 elif 'experts' not in name:
-                    if "gate" not in name or "gate_" in name:
+                    if "gate" not in name or "gate_proj" in name:
+                        if "gate_proj" in name:
+                            element_wise_mul = 1
                         if isinstance(module, torch.nn.Linear):
                             # print(name, module)
                             linear_count += 1
@@ -424,7 +427,7 @@ class HFLMWithMeasurement(HFLM):
         achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
         avg_context_length = (2 * context_length + output_length - 1) / 2
-        flops_per_token = 2 * model_size + (2 * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
+        flops_per_token = 2 * model_size + ((linear_count + element_wise_mul) * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * get_gpu_number()
         
