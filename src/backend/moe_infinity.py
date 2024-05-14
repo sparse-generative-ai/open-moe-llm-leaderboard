@@ -37,7 +37,6 @@ class MoEHFLM(HFLMWithMeasurement):
             *args, **kwargs, pretrained=pretrained, device_map="cuda:0"
     )  # Assuming HFLM accepts a 'pretrained' arg and handles it
         # self._create_model()
-        shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads"))
 
     def __del__(self):
         self._model.engine.clean_up() # clean up hooks
