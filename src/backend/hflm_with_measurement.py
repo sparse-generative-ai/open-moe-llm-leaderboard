@@ -414,7 +414,7 @@ class HFLMWithMeasurement(HFLM):
         peak_bw = peak_bw_single * get_gpu_number()
         
         context_prefill_size = context_length
-        kv_size = (2 * context_prefill_size + output_length - 1) * per_token_kv_size / 2
+        kv_size = context_prefill_size * per_token_kv_size + (output_length - 1) * per_token_kv_size / 2
         
         kv_size = kv_size / 1e9
         
@@ -426,7 +426,7 @@ class HFLMWithMeasurement(HFLM):
         token_per_sec = output_length / decoding_time
         achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
-        avg_context_length = (2 * context_length + output_length - 1) / 2
+        avg_context_length = context_length + (output_length - 1) / 2
         flops_per_token = 2 * model_size + ((linear_count + element_wise_mul) * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * get_gpu_number()
