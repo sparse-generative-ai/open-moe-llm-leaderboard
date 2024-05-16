@@ -24,7 +24,7 @@ from transformers.models.auto.modeling_auto import (
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES,
 )
 from transformers import TextStreamer
-
+from transformers.models.dbrx.modeling_dbrx import DbrxExpertGLU
 from lm_eval import utils
 from lm_eval.api.instance import Instance
 from lm_eval.api.model import TemplateLM
@@ -335,11 +335,13 @@ class HFLMWithMeasurement(HFLM):
         for name, module in self.model.named_modules():
             if ('layers.0.' in name or "transformer.blocks.0" in name) and ('attn' not in name):
                 if 'experts.0.' in name or "ffn.experts" in name:
-                    if "v1" in name or "linear_v" in name:
+                    if "linear_v" in name:
                         element_wise_mul = 1
                     if isinstance(module, torch.nn.Linear):
                         # print(name, module)
                         linear_count += 1
+                    elif isinstance(module, DbrxExpertGLU):
+                        linear_count = 3
                 # elif 'experts' not in name:
                 #     if ("gate" not in name and "router" not in name) or "gate_proj" in name:
                 #         if "gate_proj" in name:
@@ -350,7 +352,7 @@ class HFLMWithMeasurement(HFLM):
                 else:
                     continue
         print(f"linear_count: {linear_count}")
-        print(f"element_wise_mul: {element_wise_mul}")        
+        print(f"element_wise_mul: {element_wise_mul}")     
 
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
