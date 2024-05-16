@@ -122,8 +122,8 @@ for task in Tasks:
         continue
     # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
-    auto_eval_column_dict.append([f"{task.name}_gpu_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
-    auto_eval_column_dict.append([f"{task.name}_gpu_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
 
 
 # Model information
