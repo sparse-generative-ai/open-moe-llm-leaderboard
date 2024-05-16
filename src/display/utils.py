@@ -38,6 +38,8 @@ gpu_metrics_to_name_map = {
     "batch_size": BATCH_SIZE,
     "precision": PRECISION,
     GPU_Name: GPU_Name,
+    MFU: MFU,
+    MBU: MBU
 }
 
 @dataclass
@@ -80,6 +82,7 @@ class Tasks(Enum):
     selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
     mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
     gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
+    gsm8k_cot = Task("gsm8k_cot", "em", "GSM8K COT") #GSM8K COT/EM (5-shot)
 
 
 # These classes are for user facing column names,
@@ -119,6 +122,8 @@ for task in Tasks:
         continue
     # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_gpu_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_gpu_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
 
 
 # Model information
