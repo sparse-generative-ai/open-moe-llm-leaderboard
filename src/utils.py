@@ -31,6 +31,12 @@ PEAK_FLOPS_DICT = {
         "NVIDIA-H100-PCIe-80GB": 1513e12,
         "NVIDIA-RTX-A5000-24GB": 444.4e12
     },
+    "bfloat16":{
+        "NVIDIA-A100-PCIe-80GB": 624e12,
+        "NVIDIA-A100-SXM-80GB": 624e12,
+        "NVIDIA-H100-PCIe-80GB": 1513e12,
+        "NVIDIA-RTX-A5000-24GB": 444.4e12
+    },
     "8bit":{
         "NVIDIA-A100-PCIe-80GB": 1248e12,
         "NVIDIA-A100-SXM-80GB": 1248e12,
@@ -92,7 +98,8 @@ def parse_nvidia_smi():
     gpu_stats = []
 
     gpu_info_pattern = re.compile(r'(\d+)C\s+P\d+\s+(\d+)W / \d+W\s+\|\s+(\d+)MiB / \d+MiB\s+\|\s+(\d+)%')
-    gpu_name_pattern = re.compile(r'NVIDIA\s+([\w\s]+\d+(?:\s*GB)?)')
+    # gpu_name_pattern = re.compile(r'NVIDIA\s+([\w\s]+\d+(?:\s*GB)?)')
+    gpu_name_pattern = re.compile(r'NVIDIA\s+(RTX\s+)?([A-Z0-9]+)')
 
     gpu_name = ""
     for index in gpu_indices:
@@ -104,7 +111,7 @@ def parse_nvidia_smi():
             name_match = gpu_name_pattern.search(line)
             gpu_info = {}
             if name_match:
-                gpu_name = name_match.group(1).strip()
+                gpu_name = ''.join(filter(None, name_match.groups())).strip()
             if match:
                 temp, power_usage, mem_usage, gpu_util = map(int, match.groups())
                 gpu_info.update({
@@ -208,10 +215,15 @@ def get_gpu_details():
     gpus = GPUtil.getGPUs()
     gpu = gpus[0]
     name = gpu.name.replace(" ", "-")
-    # Convert memory from MB to GB and round to nearest whole number
     memory_gb = round(gpu.memoryTotal / 1024)
     memory = f"{memory_gb}GB"
+
+    for part in name.split('-'):
+        if part.endswith("GB") and part[:-2].isdigit():
+            name = name.replace(f"-{part}", "").replace(part, "")
+
     formatted_name = f"{name}-{memory}"
+    
     return formatted_name
 
 def get_peak_bw(gpu_name):
@@ -223,7 +235,7 @@ def get_peak_flops(gpu_name, precision):
 def transfer_precision2bytes(precision):
     if precision == "float32":
         return 4
-    elif precision == "float16":
+    elif precision in ["float16", "bfloat16"]:
         return 2
     elif precision == "8bit":
         return 1

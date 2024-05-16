@@ -17,12 +17,16 @@ def process_results_decorator(func):
         end_to_end_time = sum([r[1] for r in results]) / len(results)
         prefilling_time = sum([r[2] for r in results]) / len(results)
         decoding_throughput = sum([r[3] for r in results]) / len(results)
+        mfu = sum([r[4] for r in results]) / len(results)
+        mbu = sum([r[5] for r in results]) / len(results)
         # print(f"end_to_end_time: {end_to_end_time}, prefilling_time: {prefilling_time}, decoding_throughput: {decoding_throughput}")
 
         result_dict = func(self, doc, processed_results, *args, **kwargs)
         result_dict["end_to_end_time"] = end_to_end_time
         result_dict["prefilling_time"] = prefilling_time
         result_dict["decoding_throughput"] = decoding_throughput
+        result_dict["mfu"] = mfu * 100
+        result_dict["mbu"] = mbu * 100
         return result_dict
     return wrapper
 ConfigurableTask.process_results = process_results_decorator(orig_process_results)
@@ -33,6 +37,8 @@ def aggregation_decorator(func):
         aggregation_list["end_to_end_time"] = mean
         aggregation_list["prefilling_time"] = mean
         aggregation_list["decoding_throughput"] = mean
+        aggregation_list["mfu"] = mean
+        aggregation_list["mbu"] = mean
         return aggregation_list
     return wrapper
 ConfigurableTask.aggregation = aggregation_decorator(orig_aggregation)
@@ -43,6 +49,8 @@ def higher_is_better_decorator(func):
         higher_is_better_dict["end_to_end_time"] = False
         higher_is_better_dict["prefilling_time"] = False
         higher_is_better_dict["decoding_throughput"] = True
+        higher_is_better_dict["mfu"] = True
+        higher_is_better_dict["mbu"] = True
         return higher_is_better_dict
     return wrapper
 ConfigurableTask.higher_is_better = higher_is_better_decorator(orig_higher_is_better)
