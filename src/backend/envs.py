@@ -58,6 +58,7 @@ class Tasks(Enum):
     # task20 = Task("race", "acc", "RACE", 0)
     task21 = Task("mmlu", "acc", "MMLU", 5)
     task22 = Task("gsm8k_custom", "em", "GSM8K", 5)
+    # task23 = Task("gsm8k_cot", "em", "GSM8K", 8)
 
 
 EVAL_REQUESTS_PATH_BACKEND = os.path.join(CACHE_PATH, "eval-queue-bk")

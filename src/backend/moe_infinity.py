@@ -33,9 +33,10 @@ class MoEHFLM(HFLMWithMeasurement):
             kwargs.pop("device")
         if os.path.exists(os.path.join(self.offload_path, "moe-infinity-offloads")):
             shutil.rmtree(os.path.join(self.offload_path, "moe-infinity-offloads"))
+        kwargs["device_map"] = "cuda:0"
         super().__init__(
-            *args, **kwargs, pretrained=pretrained, device_map="cuda:0"
-    )  # Assuming HFLM accepts a 'pretrained' arg and handles it
+            *args, **kwargs, pretrained=pretrained
+        )  # Assuming HFLM accepts a 'pretrained' arg and handles it
         # self._create_model()
 
     def __del__(self):

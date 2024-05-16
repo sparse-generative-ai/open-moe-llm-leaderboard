@@ -473,6 +473,7 @@ if __name__ == "__main__":
         precisions = args.precision.split(",")
         print(f"debug_model_names: {debug_model_names}, debug_task_name: {debug_task_name}, precisions: {precisions}")
         task_lst = TASKS_HARNESS.copy()
+        RESULTS_REPO = DEBUG_RESULTS_REPO
         for precision in precisions:
             for debug_model_name in debug_model_names:
                 for task in task_lst:

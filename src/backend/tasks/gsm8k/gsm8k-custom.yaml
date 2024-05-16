@@ -22,18 +22,21 @@ metric_list:
       - "\\.$"
 generation_kwargs:
   until:
-    - "<|eot_id|>"
+    - "Question:"
+    - "Question"
+    - "</s>"
+    - "<|im_end|>"
   do_sample: false
   temperature: 0.0
-  is_gsm8k: true
+  # is_gsm8k: true
 repeats: 1
 num_fewshot: 5
 filter_list:
-  # - name: "strict-match"
-  #   filter:
-  #     - function: "regex"
-  #       regex_pattern: "#### (\\-?[0-9\\.\\,]+)"
-  #     - function: "take_first"
+  - name: "strict-match"
+    filter:
+      - function: "regex"
+        regex_pattern: "#### (\\-?[0-9\\.\\,]+)"
+      - function: "take_first"
   - name: "flexible-extract"
     filter:
       - function: "regex"
