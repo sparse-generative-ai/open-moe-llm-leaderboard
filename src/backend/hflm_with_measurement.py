@@ -285,7 +285,7 @@ class HFLMWithMeasurement(HFLM):
                     # Answer: (log prob, is-exact-match)
                     answer = (float(logits.sum()), bool(max_equal))
 
-                    res.append((answer, per_sample_time, 0, 0))
+                    res.append((answer, per_sample_time, 0, 0, 0, 0))
 
                     self.cache_hook.add_partial("loglikelihood", request_str, answer)
                     pbar.update(1)
