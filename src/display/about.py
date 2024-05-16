@@ -12,12 +12,15 @@ The OPEN-MOE-LLM-LEADERBOARD includes generation and multiple choice tasks to me
 Tasks:
 - **Generation Self-consistancy** -- [SelfCheckGPT](https://github.com/potsawee/selfcheckgpt)
 - **Multiple Choice Performance** -- [MMLU](https://arxiv.org/abs/2009.03300)
+- **Mathematics Problem-Solving Performance** -- [GSM8K](https://arxiv.org/abs/2110.14168)
 
 Columns and Metrics:
 - Method: The MOE LLMs inference framework.
 - E2E(s): Average End to End generation time in seconds.
 - PRE(s): Prefilling Time of input prompt in seconds.
 - T/s: Tokens throughout per second.
+- MBU(%): Model Bandwidth Utilization.
+- MFU(%): Model FLOPs Utilization.
 - Precision: The precison of used model.
 
 """
