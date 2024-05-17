@@ -24,7 +24,7 @@ from transformers.models.auto.modeling_auto import (
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES,
 )
 from transformers import TextStreamer
-
+from transformers.models.dbrx.modeling_dbrx import DbrxExpertGLU
 from lm_eval import utils
 from lm_eval.api.instance import Instance
 from lm_eval.api.model import TemplateLM
@@ -333,21 +333,26 @@ class HFLMWithMeasurement(HFLM):
         linear_count = 0 
         element_wise_mul = 0
         for name, module in self.model.named_modules():
-            if ('layers.0.' in name or 'decoder.0.' in name) and ('attn' not in name):
-                if 'experts.0.' in name:
+            if ('layers.0.' in name or "transformer.blocks.0" in name) and ('attn' not in name):
+                if 'experts.0.' in name or "ffn.experts" in name:
+                    if "linear_v" in name:
+                        element_wise_mul = 1
                     if isinstance(module, torch.nn.Linear):
                         # print(name, module)
                         linear_count += 1
-                elif 'experts' not in name:
-                    if "gate" not in name or "gate_proj" in name:
-                        if "gate_proj" in name:
-                            element_wise_mul = 1
-                        if isinstance(module, torch.nn.Linear):
-                            # print(name, module)
-                            linear_count += 1
+                    elif isinstance(module, DbrxExpertGLU):
+                        linear_count = 3
+                # elif 'experts' not in name:
+                #     if ("gate" not in name and "router" not in name) or "gate_proj" in name:
+                #         if "gate_proj" in name:
+                #             element_wise_mul = 1
+                #         if isinstance(module, torch.nn.Linear):
+                #             # print(name, module)
+                #             linear_count += 1
                 else:
                     continue
         print(f"linear_count: {linear_count}")
+        print(f"element_wise_mul: {element_wise_mul}")     
 
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
@@ -373,13 +378,17 @@ class HFLMWithMeasurement(HFLM):
         model_info = API.model_info(repo_id=self.pretrained, revision=self.revision)
         model_size_param = get_model_size(model_info=model_info, precision=self.precision)
 
-        n_layers = model_config.num_hidden_layers if hasattr(model_config, "num_hidden_layers") else model_config.num_layers
+        n_layers = model_config.num_hidden_layers if hasattr(model_config, "num_hidden_layers") else \
+            (model_config.num_layers if hasattr(model_config, "num_layers") else model_config.n_layers)
+        
         d_model = model_config.hidden_size if hasattr(model_config, "hidden_size") else model_config.d_model
         
         if hasattr(model_config, "num_experts_per_tok"):
             n_experts_per_tok = model_config.num_experts_per_tok
         elif hasattr(model_config, "num_selected_experts"):
             n_experts_per_tok = model_config.num_selected_experts
+        elif hasattr(model_config, "ffn_config"):
+            n_experts_per_tok = model_config.ffn_config.moe_top_k
         else:
             n_experts_per_tok = 1
         
@@ -389,16 +398,19 @@ class HFLMWithMeasurement(HFLM):
             d_ff = model_config.intermediate_size
         elif hasattr(model_config, "d_ff"):
             d_ff = model_config.d_ff
+        elif hasattr(model_config, "ff_ratio"):
+            d_ff = d_model * model_config.ff_ratio
+        elif hasattr(model_config, "ffn_config"):
+            d_ff = model_config.ffn_config.ffn_hidden_size
         else:
-            if hasattr(model_config, "ff_ratio"):
-                d_ff = d_model * model_config.ff_ratio
-            else:
-                raise ValueError("Unknown FFN dimension")
+            raise ValueError("Unknown FFN dimension")
         
         if hasattr(model_config, "num_local_experts"):
             num_experts = model_config.num_local_experts
         elif hasattr(model_config, "num_experts"):
             num_experts = model_config.num_experts
+        elif hasattr(model_config, "ffn_config"):
+            num_experts = model_config.ffn_config.moe_num_experts
         else:
             num_experts = 1
             
