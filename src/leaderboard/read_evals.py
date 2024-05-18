@@ -118,7 +118,7 @@ class EvalResult:
                         multiplier = 1.0
                     if "throughput" in metric:
                         multiplier = 1.0
-                    if "batch_" in metric or "Mem" in metric or "Util" in metric:
+                    if "batch_" in metric or "Mem" in metric or "Util" in metric or "mfu" in metric or "mbu" in metric:
                         multiplier = 1
 
 
