@@ -37,7 +37,7 @@ from lm_eval.models.utils import (
     stop_sequences_criteria,
 )
 from lm_eval.models.huggingface import HFLM
-from src.utils import get_gpu_number, get_gpu_details, get_peak_bw, transfer_precision2bytes, get_peak_flops
+from src.utils import get_gpu_details, get_peak_bw, transfer_precision2bytes, get_peak_flops
 from src.submission.check_validity import get_model_size
 from src.envs import API
 
@@ -73,6 +73,18 @@ class HFLMWithMeasurement(HFLM):
         self.pretrained = kwargs.get("pretrained", None)
         self.revision = kwargs.get("revision", None)
         self.precision = kwargs.get("dtype", None)
+        self.num_gpus = None
+
+    def _detect_num_gpus_used(self):
+        if self.num_gpus is not None:
+            return self.num_gpus
+        gpus = []
+        for p in self.model.parameters():
+            if p.device.type == "cuda":
+                gpus.append(p.device.index)
+                
+        self.num_gpus = len(set(gpus))
+        return self.num_gpus
 
     def _loglikelihood_tokens(
         self,
@@ -352,7 +364,8 @@ class HFLMWithMeasurement(HFLM):
                 else:
                     continue
         print(f"linear_count: {linear_count}")
-        print(f"element_wise_mul: {element_wise_mul}")     
+        print(f"element_wise_mul: {element_wise_mul}")
+        print(f"GPU usage: {self._detect_num_gpus_used()}")
 
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
@@ -423,7 +436,7 @@ class HFLMWithMeasurement(HFLM):
         per_token_kv_size = 2 * n_layers * d_model * precision_bytes
         
         peak_bw_single = get_peak_bw(get_gpu_details())
-        peak_bw = peak_bw_single * get_gpu_number()
+        peak_bw = peak_bw_single * self._detect_num_gpus_used()
         
         context_prefill_size = context_length
         kv_size = context_prefill_size * per_token_kv_size + (output_length - 1) * per_token_kv_size / 2
@@ -441,7 +454,7 @@ class HFLMWithMeasurement(HFLM):
         avg_context_length = context_length + (output_length - 1) / 2
         flops_per_token = 2 * model_size + ((linear_count + element_wise_mul) * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
-        peak_flops = peak_flops_single * get_gpu_number()
+        peak_flops = peak_flops_single * self._detect_num_gpus_used()
         
         ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
         mfu = token_per_sec * flops_per_token / peak_flops
