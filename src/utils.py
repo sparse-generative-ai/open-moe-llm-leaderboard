@@ -174,43 +174,6 @@ def analyze_gpu_stats(stats_list):
 
     return avg_stats
 
-def get_gpu_number():
-    visible_devices = os.getenv('CUDA_VISIBLE_DEVICES', None)
-    if visible_devices is not None:
-        gpu_indices = visible_devices.split(',')
-    else:
-        # Query all GPU indices if CUDA_VISIBLE_DEVICES is not set
-        result = subprocess.run(['nvidia-smi', '--query-gpu=index', '--format=csv,noheader'], capture_output=True, text=True)
-        if result.returncode != 0:
-            print("Failed to query GPU indices.")
-            return []
-        gpu_indices = result.stdout.strip().split('\n')
-    # print(f"gpu_indices: {gpu_indices}")
-    gpu_stats = []
-
-    gpu_info_pattern = re.compile(r'(\d+)C\s+P\d+\s+(\d+)W / \d+W\s+\|\s+(\d+)MiB / \d+MiB\s+\|\s+(\d+)%')
-
-    for index in gpu_indices:
-        result = subprocess.run(['nvidia-smi', '-i', index], capture_output=True, text=True)
-        output = result.stdout.strip()
-        lines = output.split("\n")
-        for line in lines:
-            match = gpu_info_pattern.search(line)
-            gpu_info = {}
-            if match:
-                temp, power_usage, mem_usage, gpu_util = map(int, match.groups())
-                gpu_info.update({
-                    GPU_TEMP: temp,
-                    GPU_Power: power_usage,
-                    GPU_Mem: round(mem_usage / 1024, 2),
-                    GPU_Util: gpu_util
-                })
-
-            if len(gpu_info) >= 4:
-                gpu_stats.append(gpu_info)
-                
-    return len(gpu_stats)
-
 def get_gpu_details():
     gpus = GPUtil.getGPUs()
     gpu = gpus[0]
