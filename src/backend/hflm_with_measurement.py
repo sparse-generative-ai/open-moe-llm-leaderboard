@@ -354,6 +354,7 @@ class HFLMWithMeasurement(HFLM):
                         linear_count += 1
                     elif isinstance(module, DbrxExpertGLU):
                         linear_count = 3
+                        element_wise_mul = 1
                 # elif 'experts' not in name:
                 #     if ("gate" not in name and "router" not in name) or "gate_proj" in name:
                 #         if "gate_proj" in name:

@@ -25,8 +25,8 @@ def process_results_decorator(func):
         result_dict["end_to_end_time"] = end_to_end_time
         result_dict["prefilling_time"] = prefilling_time
         result_dict["decoding_throughput"] = decoding_throughput
-        result_dict["mfu"] = mfu * 100
-        result_dict["mbu"] = mbu * 100
+        result_dict["mfu"] = mfu
+        result_dict["mbu"] = mbu
         return result_dict
     return wrapper
 ConfigurableTask.process_results = process_results_decorator(orig_process_results)
@@ -103,7 +103,7 @@ def run_evaluation(
         model_args=eval_request.get_model_args(),
         tasks=task_names,
         num_fewshot=num_fewshot,
-        batch_size=batch_size,
+        batch_size=1,
         max_batch_size=8,
         device=device,
         use_cache=use_cache,

@@ -83,6 +83,7 @@ class Tasks(Enum):
     mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
     gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
     # gsm8k_cot = Task("gsm8k_cot", "em", "GSM8K COT") #GSM8K COT/EM (5-shot)
+    arena_hard = Task("arena_hard", "score", "Arena Hard") #Arena Hard/Score
 
 
 # These classes are for user facing column names,
