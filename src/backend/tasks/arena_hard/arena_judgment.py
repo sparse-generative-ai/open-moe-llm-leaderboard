@@ -17,8 +17,6 @@ from tqdm import tqdm
 
 from src.backend.tasks.arena_hard.arena_utils import (
     chat_completion_openai,
-    chat_completion_openai_azure,
-    chat_completion_anthropic,
     load_questions,
     load_model_answers,
     get_endpoint,
@@ -43,12 +41,12 @@ def get_score(judgment, pattern, pairwise=True):
 def get_answer(model, conv, temperature, max_tokens, endpoint_dict=None):
     api_dict = get_endpoint(endpoint_dict["endpoints"])
 
-    if endpoint_dict["api_type"] == "anthropic":
-        output = chat_completion_anthropic(model, conv, temperature, max_tokens)
-    elif endpoint_dict["api_type"] == "azure":
-        output = chat_completion_openai_azure(model, conv, temperature, max_tokens, api_dict)
-    else:
-        output = chat_completion_openai(model, conv, temperature, max_tokens, api_dict)
+    # if endpoint_dict["api_type"] == "anthropic":
+    #     output = chat_completion_anthropic(model, conv, temperature, max_tokens)
+    # elif endpoint_dict["api_type"] == "azure":
+    #     output = chat_completion_openai_azure(model, conv, temperature, max_tokens, api_dict)
+
+    output = chat_completion_openai(model, conv, temperature, max_tokens, api_dict)
     return output
 
 
@@ -191,7 +189,7 @@ def get_battles_from_scores(score_list, first_game_only=False, WEIGHT=3):
             if weight:
                 arena_hard_battles = pd.concat([arena_hard_battles, pd.DataFrame([output] * weight)])
 
-    # arena_hard_battles.to_json("./arena_hard_battles.jsonl", lines=True, orient="records")
+    arena_hard_battles.to_json("./arena_hard_battles.jsonl", lines=True, orient="records")
     return arena_hard_battles
 
 def compute_mle_elo(df, SCALE=400, BASE=10, INIT_RATING=1000):

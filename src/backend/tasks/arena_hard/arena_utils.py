@@ -111,10 +111,6 @@ def chat_completion_openai(model, messages, temperature, max_tokens, api_dict=No
             api_key=api_dict["api_key"],
         )
     else:
-        # client = openai.OpenAI(
-        #     base_url="https://api.tutujin.com/v1",
-        #     api_key="sk-G5WiFrgHouvQUuVK094dF53551444a4f80C67f0e388447D0"
-        # )
         client = openai.OpenAI()
     
     output = API_ERROR_OUTPUT
