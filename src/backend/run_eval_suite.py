@@ -103,7 +103,7 @@ def run_evaluation(
         model_args=eval_request.get_model_args(),
         tasks=task_names,
         num_fewshot=num_fewshot,
-        batch_size=1,
+        batch_size=batch_size,
         max_batch_size=8,
         device=device,
         use_cache=use_cache,
