@@ -34,3 +34,6 @@ gputil
 bitsandbytes
 openai
 scikit-learn
+vllm
+ray[all]
+autoawq

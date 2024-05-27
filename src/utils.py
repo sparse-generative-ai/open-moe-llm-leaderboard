@@ -97,7 +97,7 @@ def parse_nvidia_smi():
     # print(f"gpu_indices: {gpu_indices}")
     gpu_stats = []
 
-    gpu_info_pattern = re.compile(r'(\d+)C\s+P\d+\s+(\d+)W / \d+W\s+\|\s+(\d+)MiB / \d+MiB\s+\|\s+(\d+)%')
+    gpu_info_pattern = re.compile(r'(\d+)C\s+P\d+\s+(\d+)W\s*/\s*\d+W\s*\|\s*(\d+)MiB\s*/\s*\d+MiB\s*\|\s*(\d+)%')
     # gpu_name_pattern = re.compile(r'NVIDIA\s+([\w\s]+\d+(?:\s*GB)?)')
     gpu_name_pattern = re.compile(r'NVIDIA\s+(RTX\s+)?([A-Z0-9]+)')
 
@@ -209,3 +209,4 @@ def transfer_precision2bytes(precision):
 
 if __name__ == "__main__":
     print(analyze_gpu_stats(parse_nvidia_smi()))
+    print(get_gpu_details())

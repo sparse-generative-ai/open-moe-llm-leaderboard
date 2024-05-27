@@ -35,18 +35,27 @@ class EvalRequest:
         model_args += ",trust_remote_code=True,device_map=auto"
         if self.precision in ["float16", "float32", "bfloat16"]:
             model_args += f",dtype={self.precision}"
+        if self.inference_framework != "vllm_moe":
             # Quantized models need some added config, the install of bits and bytes, etc
             # elif self.precision == "8bit":
             #    model_args += ",load_in_8bit=True"
-        elif self.precision == "4bit":
-           model_args += ",load_in_4bit=True"
-            # elif self.precision == "GPTQ":
-            # A GPTQ model does not need dtype to be specified,
-            # it will be inferred from the config
-        elif self.precision == "8bit":
-            model_args += ",load_in_8bit=True"
+            if self.precision == "4bit":
+               model_args += ",load_in_4bit=True"
+                # elif self.precision == "GPTQ":
+                # A GPTQ model does not need dtype to be specified,
+                # it will be inferred from the config
+            elif self.precision == "8bit":
+                model_args += ",load_in_8bit=True"
+            else:
+                raise Exception(f"Unknown precision {self.precision}.")
         else:
-            raise Exception(f"Unknown precision {self.precision}.")
+            if self.precision == "4bit":
+               model_args += ",quantization=awq,dtype=auto"
+                # elif self.precision == "GPTQ":
+                # A GPTQ model does not need dtype to be specified,
+                # it will be inferred from the config
+            elif self.precision == "8bit":
+                model_args += ",kv_cache_dtype=fp8"
         return model_args
 
 

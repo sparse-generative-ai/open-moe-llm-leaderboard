@@ -208,6 +208,8 @@ class ArenaHard(ConfigurableTask):
             stats["score"] = get_win_rate_column(stats, "score", "gpt-4-0314").tolist()
             
             return stats["score"][1]
+        
+        ConfigurableTask.download = original_download
             
         return {k: get_win_rate for k in ["score"]}
 
