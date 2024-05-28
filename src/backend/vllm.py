@@ -399,6 +399,11 @@ class VLLM_MOE(TemplateLM):
             # cache generations
             for output, context in zip(cont, context):
                 generated_text = output.outputs[0].text
+                for term in until:
+                    if len(term) > 0:
+                        # ignore '' separator,
+                        # for seq2seq case where self.tok_decode(self.eot_token_id) = ''
+                        generated_text = generated_text.split(term)[0]
                 res.append((generated_text, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu))
                 self.cache_hook.add_partial(
                     "generate_until", (context, gen_kwargs), generated_text
