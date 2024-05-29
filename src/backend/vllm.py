@@ -452,6 +452,7 @@ class VLLM_MOE(TemplateLM):
 
         # Reorder requests by length and batch
         re_ord = Collator(requests, sort_fn=_collate)
+        # self.batch_size = "auto"
         chunks = re_ord.get_batched(
             n=int(self.batch_size) if self.batch_size != "auto" else 0, batch_fn=None
         )
