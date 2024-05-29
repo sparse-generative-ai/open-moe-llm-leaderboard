@@ -16,7 +16,7 @@ requests
 semantic-version
 tqdm
 wandb
-transformers>=4.36.0
+transformers
 tokenizers>=0.15.0
 lm_eval[ifeval] @ git+https://github.com/EleutherAI/lm-evaluation-harness.git@v0.4.2
 accelerate
@@ -32,3 +32,8 @@ selfcheckgpt
 immutabledict
 gputil
 bitsandbytes
+openai
+scikit-learn
+vllm
+ray[all]
+autoawq

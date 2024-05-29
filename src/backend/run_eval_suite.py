@@ -25,8 +25,8 @@ def process_results_decorator(func):
         result_dict["end_to_end_time"] = end_to_end_time
         result_dict["prefilling_time"] = prefilling_time
         result_dict["decoding_throughput"] = decoding_throughput
-        result_dict["mfu"] = mfu * 100
-        result_dict["mbu"] = mbu * 100
+        result_dict["mfu"] = mfu
+        result_dict["mbu"] = mbu
         return result_dict
     return wrapper
 ConfigurableTask.process_results = process_results_decorator(orig_process_results)
@@ -65,6 +65,7 @@ from src.backend.tasks.selfcheckgpt.task import SelfCheckGPT
 
 from src.backend.huggingface_generate_until import HFLMwithChatTemplate
 from src.backend.moe_infinity import MoEHFLM
+from src.backend.vllm import VLLM_MOE
 
 def run_evaluation(
     eval_request: EvalRequest,
