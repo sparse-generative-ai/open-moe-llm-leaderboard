@@ -396,6 +396,7 @@ class HFLMWithMeasurement(HFLM):
         
         d_model = model_config.hidden_size if hasattr(model_config, "hidden_size") else model_config.d_model
         
+        ## Number of experts per token
         if hasattr(model_config, "num_experts_per_tok"):
             n_experts_per_tok = model_config.num_experts_per_tok
         elif hasattr(model_config, "num_selected_experts"):
@@ -405,6 +406,7 @@ class HFLMWithMeasurement(HFLM):
         else:
             n_experts_per_tok = 1
         
+        # FFN dimension
         if hasattr(model_config, "ffn_dim"):
             d_ff = model_config.ffn_dim
         elif hasattr(model_config, "intermediate_size"):
@@ -418,6 +420,7 @@ class HFLMWithMeasurement(HFLM):
         else:
             raise ValueError("Unknown FFN dimension")
         
+        ## Number of experts
         if hasattr(model_config, "num_local_experts"):
             num_experts = model_config.num_local_experts
         elif hasattr(model_config, "num_experts"):
@@ -426,14 +429,40 @@ class HFLMWithMeasurement(HFLM):
             num_experts = model_config.ffn_config.moe_num_experts
         else:
             num_experts = 1
-            
+        
+        ## For GQA
+        ### number of attention heads
+        if hasattr(model_config, "num_attention_heads"):
+            n_attn_heads = model_config.num_attention_heads
+        elif hasattr(model_config, "n_heads"):
+            n_attn_heads = model_config.n_heads
+        else:
+            raise ValueError("Unknown number of attention heads")
+
+        ### number of kv heads
+        if hasattr(model_config, "num_key_value_heads"):
+            n_kv_heads = model_config.num_key_value_heads
+        elif hasattr(model_config, "attn_config"):
+            n_kv_heads = model_config.attn_config.kv_n_heads
+        else:
+            raise ValueError("Unknown number of key value heads")
+        
+        ## For Qwen MoE Only
+        if "qwen" in model_config.model_type:
+            d_ff = model_config.moe_intermediate_size
+            n_experts_for_ffn = 4 + n_experts_per_tok
+        else:
+            n_experts_for_ffn = n_experts_per_tok
+        
         ffn_params = n_layers * d_ff * linear_count * d_model
         
         shared_params = model_size_param - num_experts * ffn_params
 
         model_size = shared_params + n_experts_per_tok * ffn_params
 
-        per_token_kv_size = 2 * n_layers * d_model * precision_bytes
+        d_head = d_model // n_attn_heads
+        
+        per_token_kv_size = 2 * n_layers * d_head * n_kv_heads * precision_bytes
         
         peak_bw_single = get_peak_bw(get_gpu_details())
         peak_bw = peak_bw_single * self._detect_num_gpus_used()
@@ -452,7 +481,9 @@ class HFLMWithMeasurement(HFLM):
         achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
         avg_context_length = context_length + (output_length - 1) / 2
-        flops_per_token = 2 * model_size + ((linear_count + element_wise_mul) * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
+        flops_per_token = 6 * n_layers * d_model * d_model + 2 * n_layers * avg_context_length * d_model + \
+            2 * n_layers * d_model * d_model + 2 * n_layers * (linear_count + element_wise_mul) * d_model * d_ff * n_experts_for_ffn + \
+                4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * self._detect_num_gpus_used()
         

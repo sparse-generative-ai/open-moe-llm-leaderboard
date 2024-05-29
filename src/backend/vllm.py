@@ -28,6 +28,7 @@ try:
 except ModuleNotFoundError:
     pass
 
+from vllm.outputs import RequestOutput
 import torch
 import time
 import transformers
@@ -37,14 +38,34 @@ eval_logger = eval_logger
 orig_run_engine = LLM._run_engine
 
 def run_engine_wrapper(func):
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self, use_tqdm, *args, **kwargs):
+        if use_tqdm:
+            num_requests = self.llm_engine.get_num_unfinished_requests()
+            pbar = tqdm(total=num_requests,
+                        desc="Processed prompts",
+                        dynamic_ncols=True)
+
+        outputs: List[RequestOutput] = []
         start = time.time()
-        res = func(self, *args, **kwargs)
+        while self.llm_engine.has_unfinished_requests():
+            step_outputs = self.llm_engine.step()
+            for output in step_outputs:
+                if output.finished:
+                    outputs.append(output)
+                    if use_tqdm:
+                        pbar.update(1)
         end = time.time()
-        self.e2e_time = end - start
-        return res
+        if use_tqdm:
+            pbar.close()
+        # Sort the outputs by request ID.
+        # This is necessary because some requests may be finished earlier than
+        # its previous requests.
+        outputs = sorted(outputs, key=lambda x: int(x.request_id))
+        decoding_time = end - start
+        return outputs, decoding_time
     return wrapper
 
+LLM._run_engine = run_engine_wrapper(orig_run_engine)
 
 @register_model("vllm_moe")
 class VLLM_MOE(TemplateLM):
@@ -70,7 +91,7 @@ class VLLM_MOE(TemplateLM):
         max_length: int = None,
         max_model_len: int = None,
         seed: int = 1234,
-        gpu_memory_utilization: float = 0.9,
+        gpu_memory_utilization: float = 0.5,
         device: str = "cuda",
         data_parallel_size: int = 1,
         lora_local_path: str = None,
@@ -255,7 +276,7 @@ class VLLM_MOE(TemplateLM):
 
         if self.lora_request is not None:
             start = time.time()
-            outputs = self.model.generate(
+            outputs, decoding_time = self.model.generate(
                 prompt_token_ids=requests,
                 sampling_params=sampling_params,
                 use_tqdm=True if self.batch_size == "auto" else False,
@@ -264,14 +285,17 @@ class VLLM_MOE(TemplateLM):
             end = time.time()
         else:
             start = time.time()
-            outputs = self.model.generate(
+            outputs, decoding_time = self.model.generate(
                 prompt_token_ids=requests,
                 sampling_params=sampling_params,
                 use_tqdm=True if self.batch_size == "auto" else False,
             )
             end = time.time()
-        e2e_time = (end - start) / self.batch_size
-        return outputs, e2e_time, 0, 0, 0, 0
+        b_size = len(requests)
+        output_length = sum([len(x.outputs[0].token_ids) for x in outputs])
+        e2e_time = (end - start) / b_size
+        token_per_sec = output_length / decoding_time
+        return outputs, e2e_time, 0, token_per_sec, 0, 0
 
     def loglikelihood_rolling(
         self, requests: List[Instance], disable_tqdm: bool = False
@@ -339,6 +363,7 @@ class VLLM_MOE(TemplateLM):
         # so that we don't try to execute e.g. greedy sampling and temp=0.8 sampling
         # in the same batch.
         re_ords = Collator(requests, _collate_gen, group_by="gen_kwargs")
+        # self.batch_size = "auto"
         chunks = re_ords.get_batched(
             n=int(self.batch_size) if self.batch_size != "auto" else 0, batch_fn=None
         )
@@ -459,7 +484,7 @@ class VLLM_MOE(TemplateLM):
                     ctxlen=ctxlen,
                 )
 
-                res.append((answer, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu))
+                res.append((answer, end_to_end_time, 0, 0, 0, 0))
 
                 # partial caching
                 if cache_key is not None:
