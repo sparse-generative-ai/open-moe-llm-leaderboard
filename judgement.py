@@ -9,8 +9,15 @@ from src.backend.tasks.arena_hard.arena_judgment import (
 import os
 import concurrent
 import pandas as pd
+import argparse
 
-kwargss = pickle.load(open(os.path.join(os.path.dirname(__file__), "judgment_kwargs.pkl"), "rb"))
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--judgment_kwargs_path", type=str, default="judgment_kwargs.pkl")
+    return parser.parse_args()
+
+args = get_args()
+kwargss = pickle.load(open(args.judgment_kwargs_path, "rb"))
 
 print("Judging...")
 score_list = []
