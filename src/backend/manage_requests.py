@@ -46,8 +46,6 @@ class EvalRequest:
                 # it will be inferred from the config
             elif self.precision == "8bit":
                 model_args += ",load_in_8bit=True"
-            else:
-                raise Exception(f"Unknown precision {self.precision}.")
         else:
             if self.precision == "4bit":
                model_args += ",quantization=awq,dtype=auto"

@@ -452,12 +452,13 @@ def get_args():
     # debug parameters
     parser.add_argument("--task", type=str, default="selfcheckgpt,mmlu, gsm8k", help="Task to debug")
     parser.add_argument("--model", type=str, default="mistralai/Mixtral-8x7B-Instruct-v0.1,mistralai/Mixtral-8x7B-v0.1", help="Model to debug")
-    parser.add_argument("--precision", type=str, default="float32,float16,8bit,4bit", help="Precision to debug")
+    parser.add_argument("--precision", type=str, default="float32,bfloat16,8bit,4bit", help="Precision to debug")
     parser.add_argument("--inference-framework", type=str, default="hf-chat", help="Inference framework to debug")
     parser.add_argument("--limit", type=int, default=None, help="Limit for the number of samples")
     parser.add_argument("--gpu-type", type=str, default="NVIDIA-A100-PCIe-80GB", 
                         help="GPU type. NVIDIA-A100-PCIe-80GB; NVIDIA-RTX-A5000-24GB; NVIDIA-H100-PCIe-80GB")
     parser.add_argument("--debug_repo", action="store_true", help="Use debug repo")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     return parser.parse_args()
 
 
@@ -488,7 +489,8 @@ if __name__ == "__main__":
                         json_filepath="",
                         precision=precision,  # Use precision from arguments
                         inference_framework=args.inference_framework,  # Use inference framework from arguments
-                        gpu_type=args.gpu_type
+                        gpu_type=args.gpu_type,
+                        batch_size=args.batch_size,
                     )
                     curr_gpu_type = get_gpu_details()
                     if eval_request.gpu_type != curr_gpu_type:
