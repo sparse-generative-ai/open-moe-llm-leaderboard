@@ -340,7 +340,17 @@ class VLLM_MOE(TemplateLM):
         context, all_gen_kwargs = zip(*(req.args for req in requests))
         for ctx in context:
             messages = [{"role": "user", "content": f"{ctx}"}]
-            updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False)
+            if "dbrx" in self.model_args["model"]:
+                updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            elif "Qwen" in self.model_args["model"]:
+                messages = [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": ctx}
+                ]
+                updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            else:
+                updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False)
+                
             updated_strings.append(updated_string)
         
         context = updated_strings[:]
