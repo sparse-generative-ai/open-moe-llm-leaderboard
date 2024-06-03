@@ -108,6 +108,7 @@ def parse_nvidia_smi():
         lines = output.split("\n")
         for line in lines:
             match = gpu_info_pattern.search(line)
+            # print matched groups
             name_match = gpu_name_pattern.search(line)
             gpu_info = {}
             if name_match:
@@ -123,7 +124,6 @@ def parse_nvidia_smi():
 
             if len(gpu_info) >= 4:
                 gpu_stats.append(gpu_info)
-    # print(f"gpu_stats: {gpu_stats}")
     gpu_name = f"{len(gpu_stats)}x{gpu_name}"
     gpu_stats_total = {
                         GPU_TEMP: 0,
@@ -146,6 +146,7 @@ def parse_nvidia_smi():
 def monitor_gpus(stop_event, interval, stats_list):
     while not stop_event.is_set():
         gpu_stats = parse_nvidia_smi()
+        # print(f"gpu_stats: {gpu_stats}")
         if gpu_stats:
             stats_list.extend(gpu_stats)
         stop_event.wait(interval)

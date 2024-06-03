@@ -6,6 +6,10 @@ from time import time
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
 
+
+import tensorrt_llm
+import pickle
+import io
 import torch
 import torch.nn.functional as F
 import transformers
@@ -66,7 +70,7 @@ class StopWatch(TextStreamer):
             self.decoding_time = time() - self.start_decoding
         return
 
-
+from multiprocessing import shared_memory
 class HFLMWithMeasurement(HFLM):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -74,6 +78,9 @@ class HFLMWithMeasurement(HFLM):
         self.revision = kwargs.get("revision", None)
         self.precision = kwargs.get("dtype", None)
         self.num_gpus = None
+        
+        self.model_name = self.pretrained.split('/')[-1].lower()
+        
 
     def _detect_num_gpus_used(self):
         if self.num_gpus is not None:
@@ -144,6 +151,7 @@ class HFLMWithMeasurement(HFLM):
         )
 
         chunks = re_ord.get_batched(n=batch_size, batch_fn=batch_fn)
+        print(f"{len(requests)=} ")
         pbar = tqdm(
             total=len(requests),
             disable=(disable_tqdm or (self.rank != 0)),
@@ -243,10 +251,51 @@ class HFLMWithMeasurement(HFLM):
                     "attn_mask": batched_encoder_mask,
                     "labels": batched_conts,
                 }
-
+            intermediate_res = None
             start = time()
-            intermediate_res = self._model_call(batched_inps, **call_kwargs)
+            if hasattr(self.model, "tensorrt") and self.model.tensorrt:
+                # print(f"{generation_kwargs=}")
+                
+                # lock file from reading
+                filename = "/tmp/trtfile_in"
+                # lines = []
+                
+                bytes_io = io.BytesIO()
+                
+                # print(context)
+                
+                with open(filename, "wb") as f:
+                    # f.write("\n".join(lines).encode("utf-8"))
+                    # f.write(b"\n")
+                    torch.save(batched_inps, bytes_io)
+                    f.write(bytes_io.getvalue())
+                    
+                while True:
+                    if os.path.getsize("/tmp/trtfile_complete_tag") == 0:
+                        continue
+                    print(f"load intermediate_res")
+                    
+                    with open("/tmp/trtfile_complete_tag", "r") as f:
+                        n_bytes = f.read().strip()
+                        n_bytes = int(n_bytes)
+                    print(f"{n_bytes=}")
+                    tensor_bytes = bytes(self.shm.buf[:n_bytes])
+                    # import pdb; pdb.set_trace()
+                    # print inner byte len of bytes_io
+                    print(f"{len(tensor_bytes)=}")
+                    # intermediate_res = pickle.loads(tensor_bytes).to(self.device)
+                    intermediate_res = pickle.loads(tensor_bytes).squeeze(0).to(self.device)
+                    # with open(filename, "rb") as f:
+                    #     intermediate_res = torch.load(f)
+                    #     intermediate_res = intermediate_res.squeeze(0).tolist()
+                    break
+                open("/tmp/trtfile_complete_tag", "w").close()
+                print(f"load {intermediate_res=}")
+            else:
+                intermediate_res = self._model_call(batched_inps, **call_kwargs)
+                # print(f"normal call {intermediate_res.shape}")
             end = time()
+            print(f"{intermediate_res.shape=}")
             multi_logits = F.log_softmax(
                 intermediate_res , dim=-1
             )  # [batch, padding_length (inp or cont), vocab]
@@ -256,6 +305,7 @@ class HFLMWithMeasurement(HFLM):
                 chunk, multi_logits, inplens, cont_toks_list
             ):
                 # Slice to original seq length
+                # import pdb; pdb.set_trace()
                 contlen = len(cont_toks)
                 # take only logits in the continuation
                 # (discard context toks if decoder-only ; discard right-padding)
@@ -277,6 +327,7 @@ class HFLMWithMeasurement(HFLM):
                 # original args. Otherwise, expands the logits batch dimension and yields each
                 # batch along with matching continuation tokens and prompt strings.
                 # logits -> [1, seq, vocab]
+                # import pdb; pdb.set_trace()
                 for request_str, cont_toks, logits in re_ord.get_cache(
                     req_str=request_str,
                     cxt_toks=ctx_tokens,
@@ -299,6 +350,7 @@ class HFLMWithMeasurement(HFLM):
 
                     res.append((answer, per_sample_time, 0, 0, 0, 0))
 
+                    # import pdb; pdb.set_trace()
                     self.cache_hook.add_partial("loglikelihood", request_str, answer)
                     pbar.update(1)
 
@@ -371,22 +423,85 @@ class HFLMWithMeasurement(HFLM):
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
         )
+        print(f"stop words: {stop}")
         stop_watch = StopWatch(self.tokenizer)
         start = time()
-        res = self.model.generate(
-            input_ids=context,
-            max_new_tokens=max_tokens,
-            stopping_criteria=stopping_criteria,
-            pad_token_id=self.tokenizer.pad_token_id,
-            use_cache=True,
-            streamer=stop_watch,
-            **generation_kwargs,
-        )
+        
+        if hasattr(self.model, "tensorrt") and self.model.tensorrt:
+            # print(f"{generation_kwargs=}")
+            stop_words_list = stop
+            
+            # lock file from reading
+            filename = "/tmp/trtfile_in"
+            lines = []
+            lines.append(",".join([str(x) for x in stop_words_list]))
+            print(f"{max_tokens=}")
+            lines.append(str(max_tokens))
+            
+            bytes = io.BytesIO()
+            torch.save(context, bytes)
+            
+            # print(context)
+            
+            with open(filename, "wb") as f:
+                f.write("\n".join(lines).encode("utf-8"))
+                f.write(b"\n")
+                f.write(bytes.getvalue())
+                
+            
+            fileout = "/tmp/trtfile_out"
+            while True:
+                if os.path.getsize(fileout) == 0:
+                    continue
+                with open(fileout, "rb") as f:
+                    line = f.readline()
+                    first_time, gen_time = [float(x) for x in line.decode("utf-8").strip().split(",")]
+                    print(f"first time: {first_time}, gen time: {gen_time}")
+                    stop_watch.prefilling_time = first_time
+                    stop_watch.decoding_time = gen_time
+                    data = f.read()
+                    res = torch.load(io.BytesIO(data))
+                open(fileout, 'w').close()
+                break
+            
+            # stop_words_list = [[stop_words_list]] * context.shape[0]
+            # stop_words_list = torch.Tensor(stop_words_list).to(torch.int32).to("cuda").contiguous()
+
+            # print(stop,stop_words_list)
+            # res = self.model.generate(
+            #     batch_input_ids=context,
+            #     end_id=self.tokenizer.eos_token_id,
+            #     pad_id=self.tokenizer.pad_token_id,
+            #     max_new_tokens=max_tokens,
+            #     stop_words_list=stop_words_list,
+            #     # stopping_criteria=stopping_criteria,
+            #     # pad_token_id=self.tokenizer.pad_token_id,
+            #     use_cache=True,
+            #     # streamer=stop_watch,
+            #     **generation_kwargs,
+            # )
+        else:
+            print(f"normal gen {generation_kwargs=}")
+            res = self.model.generate(
+                input_ids=context,
+                max_new_tokens=max_tokens,
+                stopping_criteria=stopping_criteria,
+                pad_token_id=self.tokenizer.pad_token_id,
+                use_cache=True,
+                streamer=stop_watch,
+                **generation_kwargs,
+            )
         end = time()
 
+        print(f"stop_watch.prefilling_time: {stop_watch.prefilling_time}")
+        print(f"stop_watch.decoding_time: {stop_watch.decoding_time}")
         batch_size = context.shape[0]
-        output_length = stop_watch.decoding_iterations
-        
+        # output_length = stop_watch.decoding_iterations
+        output_length = res.shape[1]
+        if self.precision == "int4":
+            self.precision = "4bit"
+        if self.precision == "int8":
+            self.precision = "8bit"
         precision_bytes = transfer_precision2bytes(self.precision)
         
         model_size_param = sum(p.numel() for p in self.model.parameters())
@@ -446,10 +561,11 @@ class HFLMWithMeasurement(HFLM):
         n_vocab = model_config.vocab_size
 
         end_to_end_time = (end - start) / batch_size
-        prefilling_time = stop_watch.prefilling_time / batch_size
-        decoding_time = stop_watch.decoding_time / batch_size
-        token_per_sec = output_length / decoding_time
+        prefilling_time = stop_watch.prefilling_time / batch_size if stop_watch.prefilling_time is not None else 0
+        decoding_time = stop_watch.decoding_time / batch_size if stop_watch.decoding_time is not None else 0
+        token_per_sec = output_length / decoding_time if decoding_time != 0 else output_length / end_to_end_time
         achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
+        print(f"end_to_end_time: {end_to_end_time}, prefilling_time: {prefilling_time}, decoding_time: {decoding_time}, token_per_sec: {token_per_sec}, achieve_mem_bw: {achieve_mem_bw}")
         
         avg_context_length = context_length + (output_length - 1) / 2
         flops_per_token = 2 * model_size + ((linear_count + element_wise_mul) * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
@@ -457,17 +573,156 @@ class HFLMWithMeasurement(HFLM):
         peak_flops = peak_flops_single * self._detect_num_gpus_used()
         
         ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
-        mfu = token_per_sec * flops_per_token / peak_flops
-        mbu = achieve_mem_bw / peak_bw
+        mfu = token_per_sec * flops_per_token / peak_flops if peak_flops != 0 else 0
+        mbu = achieve_mem_bw / peak_bw if peak_bw != 0 else 0
         
         print(f"mfu: {mfu}, mbu: {mbu}")
         
         return res, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu
 
+
+    # def generate_until(
+    #     self, requests: List[Instance], disable_tqdm: bool = False
+    # ) -> List[str]:
+    #     res = []
+
+    #     # batch tokenize contexts
+    #     updated_strings = []
+    #     context, all_gen_kwargs = zip(*(req.args for req in requests))
+    #     for ctx in context:
+    #         messages = [{"role": "user", "content": f"{ctx}"}]
+    #         updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False)
+    #         updated_strings.append(updated_string)
+        
+    #     context = updated_strings[:]
+            
+    #     context_encoding = self.tokenizer(context, add_special_tokens=False).input_ids
+    #     requests = [
+    #         ((a, b), c) for a, b, c in zip(context, context_encoding, all_gen_kwargs)
+    #     ]
+
+    #     def _collate_gen(_requests):
+    #         # the negative sign on len(toks) sorts descending - this has a few advantages:
+    #         # - time estimates will always be over not underestimates, which is more useful for planning
+    #         # - to know the size of a batch when going through the list, you know the first one is always the batch
+    #         #   padded context length. this is useful to simplify the batching logic and more importantly to make
+    #         #   automatic adaptive batches much much easier to implement
+    #         # - any OOMs will happen right away rather than near the end
+    #         return -len(_requests[0][1]), _requests[0][0]
+
+    #     # we group requests by their generation_kwargs,
+    #     # so that we don't try to execute e.g. greedy sampling and temp=0.8 sampling
+    #     # in the same batch.
+    #     re_ords = Collator(requests, _collate_gen, group_by="gen_kwargs")
+    #     chunks = re_ords.get_batched(
+    #         n=int(self.batch_size) if self.batch_size != "auto" else 0, batch_fn=None
+    #     )
+
+    #     pbar = tqdm(
+    #         total=len(requests),
+    #         disable=(disable_tqdm or (self.rank != 0)),
+    #         desc="Running generate_until requests",
+    #     )
+    #     # for each different set of kwargs, we execute all requests, by batch.
+    #     for chunk in chunks:
+    #         context_and_encoding, all_gen_kwargs = zip(*chunk)
+    #         context, context_encoding = zip(*context_and_encoding)
+    #         # we assume all gen kwargs in the batch are the same
+    #         # this is safe to assume because the `grouper` object ensures it.
+    #         gen_kwargs = all_gen_kwargs[0]
+    #         # unpack our keyword arguments.
+    #         until = None
+    #         if isinstance(gen_kwargs, dict):
+    #             kwargs = copy.deepcopy(gen_kwargs)  # edge case for repeats > 1
+    #             if "until" in kwargs.keys():
+    #                 until = kwargs.pop("until")
+    #                 if isinstance(until, str):
+    #                     until = [until]
+    #                 elif not isinstance(until, list):
+    #                     raise ValueError(
+    #                         f"Expected `kwargs['until']` to be of type Union[str,list] but got {until}"
+    #                     )
+    #         else:
+    #             raise ValueError(
+    #                 f"Expected `kwargs` to be of type `dict` but got {gen_kwargs}"
+    #             )
+    #         # add EOS token to stop sequences
+    #         eos = "<|eot_id|>"
+    #         if not until:
+    #             until = [eos]
+    #         else:
+    #             until.append(eos)
+    #         if "max_gen_toks" in kwargs.keys():
+    #             max_gen_toks = kwargs.pop("max_gen_toks")
+    #         else:
+    #             max_gen_toks = self.max_gen_toks
+
+    #         # set the max length in tokens of inputs ("context_enc")
+    #         # max len for inputs = max length, minus room to generate the max new tokens
+    #         max_ctx_len = self.max_length - max_gen_toks
+    #         context_encoding = [x[-max_ctx_len:] for x in context_encoding]
+
+    #         # perform batched generation
+    #         cont, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu = self._model_generate(
+    #             requests=context_encoding,
+    #             generate=True,
+    #             max_tokens=max_gen_toks,
+    #             stop=until,
+    #             **kwargs,
+    #         )
+
+    #         # cache generations
+    #         for output, context in zip(cont, context):
+    #             generated_text = output.outputs[0].text
+    #             for term in until:
+    #                 if len(term) > 0:
+    #                     # ignore '' separator,
+    #                     # for seq2seq case where self.tok_decode(self.eot_token_id) = ''
+    #                     generated_text = generated_text.split(term)[0]
+    #             res.append((generated_text, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu))
+    #             self.cache_hook.add_partial(
+    #                 "generate_until", (context, gen_kwargs), generated_text
+    #             )
+    #             pbar.update(1)
+
+    #     pbar.close()
+    #     # reorder all group of results back to original unsorted form
+    #     return re_ords.get_original(res)
+
     def generate_until(
         self, requests: List[Instance], disable_tqdm: bool = False
     ) -> List[str]:
         res = []
+        
+        # batch tokenize contexts
+        updated_strings = []
+        context, all_gen_kwargs = zip(*(req.args for req in requests))
+        for ctx in context:
+            messages = [{"role": "user", "content": f"{ctx}"}]
+            if "dbrx" in self.model_name:
+                updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            elif "qwen" in self.model_name:
+                messages = [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": ctx}
+                ]
+                updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            else:
+                updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False)
+                
+            updated_strings.append(updated_string)
+        # print(requests)
+        context = updated_strings[:]
+        
+        # context_encoding = self.tokenizer(context, add_special_tokens=False).input_ids
+        # requests = [
+        #     ((a, b), c) for a, b, c in zip(context, context_encoding, all_gen_kwargs)
+        # ]
+        for i, req in enumerate(requests):
+            requests[i].arguments = (context[i], ) + req.arguments[1:]
+        
+        # TODO: Context放到request里
+        # requests = 
 
         def _collate(req: Tuple[str, dict]):
             """Defines the key for the sorted method"""
@@ -486,6 +741,7 @@ class HFLMWithMeasurement(HFLM):
             desc="Running generate_until requests",
         )
         adaptive_batch_size = None
+        print(f"batch_size: {self.batch_size}")
         if self.batch_size == "auto":
             # using rolling window with maximum context
             print("Passed argument batch_size = auto. Detecting largest batch size")
@@ -510,6 +766,7 @@ class HFLMWithMeasurement(HFLM):
         # so that we don't try to execute e.g. greedy sampling and temp=0.8 sampling
         # in the same batch.
         # group_fn=lambda x: x[1] -> x=(context, gen_kwargs)
+        # re_ords = Collator(requests, _collate_gen, group_by="gen_kwargs")
         re_ords = Collator(
             [reg.args for reg in requests],
             sort_fn=_collate,
@@ -519,6 +776,8 @@ class HFLMWithMeasurement(HFLM):
         chunks = re_ords.get_batched(n=batch_size, batch_fn=batch_fn)
         for chunk in chunks:
             contexts, all_gen_kwargs = zip(*chunk)
+            # context_and_encoding, all_gen_kwargs = zip(*chunk)
+            # context, context_encoding = zip(*context_and_encoding)
             # we assume all gen kwargs in the batch are the same
             # this is safe to assume because the `grouper` object ensures it.
             gen_kwargs = all_gen_kwargs[0]
@@ -586,15 +845,21 @@ class HFLMWithMeasurement(HFLM):
                 stop=until,
                 **kwargs,
             )
-
+            # print(f"{cont=} {cont.shape=}")
             cont_toks_list = cont.tolist()
+            # 如果cont_toks_list有3维，那么就把三个维度都转成list
+            # print(f"{cont_toks_list=}")
             for cont_toks, context in zip(cont_toks_list, contexts):
                 # discard context + left-padding toks if using causal decoder-only LM
                 if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM:
                     # print("After Generation: ", self.tok_decode(cont_toks))
+                    # print(f"{cont_toks=}")
+                    # print(f"{context_enc=}")
                     cont_toks = cont_toks[context_enc.shape[1] :]
-                
+                # print(f"{cont_toks=}")
                 s = self.tok_decode(cont_toks)
+                # s = self.tokenizer.batch_decode(cont_toks, skip_special_tokens=True)[0]
+                # print(f"Generated: {s}")
 
                 # # use secondary stop seqs to cut off should-have-been-stopped content post-hoc
                 # if not is_gsm8k:

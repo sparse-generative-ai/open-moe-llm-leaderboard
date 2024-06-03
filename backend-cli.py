@@ -140,10 +140,10 @@ def request_to_result_name(request: EvalRequest) -> str:
 
 
 def process_evaluation(task: Task, eval_request: EvalRequest, limit: Optional[int] = None) -> dict:
-    batch_size = 1
     batch_size = eval_request.batch_size
+    batch_size = 4
 
-    init_gpu_info = analyze_gpu_stats(parse_nvidia_smi())
+    # init_gpu_info = analyze_gpu_stats(parse_nvidia_smi())
     # if init_gpu_info['Mem(M)'] > 500:
     #     assert False, f"This machine is not empty: {init_gpu_info}"
     gpu_stats_list = []
@@ -450,7 +450,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Run the backend")
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     # debug parameters
-    parser.add_argument("--task", type=str, default="selfcheckgpt,mmlu, gsm8k", help="Task to debug")
+    parser.add_argument("--task", type=str, default="selfcheckgpt,mmlu,gsm8k", help="Task to debug")
     parser.add_argument("--model", type=str, default="mistralai/Mixtral-8x7B-Instruct-v0.1,mistralai/Mixtral-8x7B-v0.1", help="Model to debug")
     parser.add_argument("--precision", type=str, default="float32,float16,8bit,4bit", help="Precision to debug")
     parser.add_argument("--inference-framework", type=str, default="hf-chat", help="Inference framework to debug")

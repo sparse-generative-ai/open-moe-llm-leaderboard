@@ -35,7 +35,7 @@ class EvalRequest:
         model_args += ",trust_remote_code=True,device_map=auto"
         if self.precision in ["float16", "float32", "bfloat16"]:
             model_args += f",dtype={self.precision}"
-        if self.inference_framework != "vllm_moe":
+        if self.inference_framework != "vllm_moe" and self.inference_framework != "tensorrt_llm" and self.inference_framework != "hf-chat":
             # Quantized models need some added config, the install of bits and bytes, etc
             # elif self.precision == "8bit":
             #    model_args += ",load_in_8bit=True"
@@ -48,6 +48,11 @@ class EvalRequest:
                 model_args += ",load_in_8bit=True"
             else:
                 raise Exception(f"Unknown precision {self.precision}.")
+        elif self.inference_framework == "tensorrt_llm":
+            if self.precision == "4bit":
+               model_args += ",dtype=int4"
+            elif self.precision == "8bit":
+                model_args += ",dtype=int8"
         else:
             if self.precision == "4bit":
                model_args += ",quantization=awq,dtype=auto"

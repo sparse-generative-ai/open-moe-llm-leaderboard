@@ -188,6 +188,7 @@ class InferenceFramework(Enum):
     # "moe-infinity", hf-chat
     MoE_Infinity = ModelDetails("moe-infinity")
     HF_Chat = ModelDetails("hf-chat")
+    TensorRTLLM = ModelDetails("tensorrt_llm")
     Unknown = ModelDetails("?")
 
     def to_str(self):
@@ -199,6 +200,8 @@ class InferenceFramework(Enum):
             return InferenceFramework.MoE_Infinity
         if inference_framework in ["hf-chat"]:
             return InferenceFramework.HF_Chat
+        if inference_framework in ["tensorrt_llm"]:
+            return InferenceFramework.TensorRTLLM
         return InferenceFramework.Unknown
 
 class GPUType(Enum):

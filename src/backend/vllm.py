@@ -34,7 +34,8 @@ import transformers
 
 
 eval_logger = eval_logger
-orig_run_engine = LLM._run_engine
+# orig_run_engine = LLM._run_engine
+orig_run_engine = None
 
 def run_engine_wrapper(func):
     def wrapper(self, *args, **kwargs):
