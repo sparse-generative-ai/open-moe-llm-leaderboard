@@ -30,6 +30,12 @@ class HFLMwithChatTemplate(HFLMWithMeasurement):
                     ]
                     if "dbrx" in self.model.name_or_path:
                         updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                    elif "Qwen" in self.model.name_or_path:
+                        messages = [
+                            {"role": "system", "content": "You are a helpful assistant."},
+                            {"role": "user", "content": input_string}
+                        ]
+                        updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                     else:
                         updated_string = self.tokenizer.apply_chat_template(messages, tokenize=False)
                     updated_strings.append(updated_string)
