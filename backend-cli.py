@@ -141,7 +141,7 @@ def request_to_result_name(request: EvalRequest) -> str:
 
 def process_evaluation(task: Task, eval_request: EvalRequest, limit: Optional[int] = None) -> dict:
     batch_size = eval_request.batch_size
-    batch_size = 4
+    batch_size = 16
 
     # init_gpu_info = analyze_gpu_stats(parse_nvidia_smi())
     # if init_gpu_info['Mem(M)'] > 500:

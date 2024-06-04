@@ -419,7 +419,8 @@ class HFLMWithMeasurement(HFLM):
         print(f"linear_count: {linear_count}")
         print(f"element_wise_mul: {element_wise_mul}")
         print(f"GPU usage: {self._detect_num_gpus_used()}")
-
+        if generation_kwargs.get("max_gen_toks", None) is not None:
+            max_tokens = generation_kwargs.pop("max_gen_toks")
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
         )
