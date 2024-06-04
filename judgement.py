@@ -10,22 +10,13 @@ import os
 import concurrent
 import pandas as pd
 import argparse
+import csv
+from tqdm import tqdm
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--judgment_kwargs_path", type=str, default="judgment_kwargs.pkl")
+    parser.add_argument("--judgment_kwargs_dir", type=str, required=True, help="Path to the judgment kwargs")
     return parser.parse_args()
-
-args = get_args()
-kwargss = pickle.load(open(args.judgment_kwargs_path, "rb"))
-
-print("Judging...")
-score_list = []
-with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-    for kwargs in kwargss:
-        scores = judgment(**kwargs)
-        score_list.append(scores)
-
 
 def get_win_rate(score_list):
     battles = get_battles_from_scores(score_list)
@@ -41,5 +32,27 @@ def get_win_rate(score_list):
     
     return stats["score"][1]
 
-score = get_win_rate(score_list)
-print(f"Arena Hard score: {score}")
+args = get_args()
+file_data = []
+
+# Loop through each file in the directory
+for filename in sorted(os.listdir(args.judgment_kwargs_dir)):
+    file_path = os.path.join(args.judgment_kwargs_dir, filename)
+    file_name = filename[:-20]
+    kwargss = pickle.load(open(file_path, "rb"))
+
+    print("Judging...")
+    score_list = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(judgment, **kwargs) for kwargs in kwargss[:2]]
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc=f"evaluate {filename}"):
+            scores = future.result()
+            score_list.append(scores)
+    score = get_win_rate(score_list)
+    output = [file_name, score]
+    print(f"Arena Hard score: {score}")
+    
+    output_csv_path = 'arena_hard_output.csv'
+    with open(output_csv_path, 'a', newline='', encoding='utf-8') as csv_file:
+        csv_file.write(f"model-score: {output}\n")
