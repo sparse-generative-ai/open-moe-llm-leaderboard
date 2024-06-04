@@ -11,7 +11,7 @@ import concurrent
 import pandas as pd
 import argparse
 import csv
-from tqdm import tqdm
+import tqdm as tqdm
 
 def get_args():
     parser = argparse.ArgumentParser()
