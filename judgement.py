@@ -11,6 +11,7 @@ import concurrent
 import pandas as pd
 import argparse
 import csv
+import tqdm as tqdm
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -42,13 +43,15 @@ for filename in sorted(os.listdir(args.judgment_kwargs_dir)):
 
     print("Judging...")
     score_list = []
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        for kwargs in kwargss[:2]:
-            scores = judgment(**kwargs)
+        futures = [executor.submit(judgment, **kwargs) for kwargs in kwargss[:2]]
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc=f"evaluate {filename}"):
+            scores = future.result()
             score_list.append(scores)
-        score = get_win_rate(score_list)
-        output = [file_name, score]
-        print(f"Arena Hard score: {score}")
+    score = get_win_rate(score_list)
+    output = [file_name, score]
+    print(f"Arena Hard score: {score}")
     
     output_csv_path = 'arena_hard_output.csv'
     with open(output_csv_path, 'a', newline='', encoding='utf-8') as csv_file:
