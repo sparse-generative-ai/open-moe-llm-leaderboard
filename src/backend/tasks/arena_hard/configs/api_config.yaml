@@ -1,0 +1,17 @@
+# gpt-3.5-turbo:
+#     model_name: gpt-3.5-turbo
+#     endpoints: null
+#     api_type: openai
+#     parallel: 8
+
+gpt-4-1106-preview:
+    model_name: gpt-4-1106-preview
+    endpoints: null
+    api_type: openai
+    parallel: 8
+
+# llama3-7b:
+#     model_name: llama3-7b
+#     endpoints: null
+#     api_type: openai
+#     parallel: 8

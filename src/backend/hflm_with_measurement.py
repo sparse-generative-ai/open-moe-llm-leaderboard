@@ -354,6 +354,7 @@ class HFLMWithMeasurement(HFLM):
                         linear_count += 1
                     elif isinstance(module, DbrxExpertGLU):
                         linear_count = 3
+                        element_wise_mul = 1
                 # elif 'experts' not in name:
                 #     if ("gate" not in name and "router" not in name) or "gate_proj" in name:
                 #         if "gate_proj" in name:
@@ -388,8 +389,7 @@ class HFLMWithMeasurement(HFLM):
         
         precision_bytes = transfer_precision2bytes(self.precision)
         
-        model_info = API.model_info(repo_id=self.pretrained, revision=self.revision)
-        model_size_param = get_model_size(model_info=model_info, precision=self.precision)
+        model_size_param = sum(p.numel() for p in self.model.parameters())
 
         n_layers = model_config.num_hidden_layers if hasattr(model_config, "num_hidden_layers") else \
             (model_config.num_layers if hasattr(model_config, "num_layers") else model_config.n_layers)
@@ -429,7 +429,7 @@ class HFLMWithMeasurement(HFLM):
             
         ffn_params = n_layers * d_ff * linear_count * d_model
         
-        shared_params = model_size_param * 1e9 - num_experts * ffn_params
+        shared_params = model_size_param - num_experts * ffn_params
 
         model_size = shared_params + n_experts_per_tok * ffn_params
 

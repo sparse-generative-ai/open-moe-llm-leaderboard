@@ -1,0 +1,2 @@
+task: arena_hard
+class: !function task.ArenaHard
