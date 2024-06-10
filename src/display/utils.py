@@ -205,7 +205,7 @@ class InferenceFramework(Enum):
         return InferenceFramework.Unknown
 
 class GPUType(Enum):
-    H100_pcie = ModelDetails("NVIDIA-A100-SXM4-80GB")
+    A100_sxm = ModelDetails("NVIDIA-A100-SXM4-80GB")
     A100_pcie = ModelDetails("NVIDIA-A100-PCIe-80GB")
     Unknown = ModelDetails("?")
 
@@ -214,10 +214,10 @@ class GPUType(Enum):
 
     @staticmethod
     def from_str(gpu_type: str):
-        if gpu_type in ["NVIDIA-H100-PCIe-80GB"]:
-            return GPUType.A100_pcie
         if gpu_type in ["NVIDIA-A100-PCIe-80GB"]:
-            return GPUType.H100_pcie
+            return GPUType.A100_pcie
+        if gpu_type in ["NVIDIA-A100-SXM4-80GB"]:
+            return GPUType.A100_sxm
         return GPUType.Unknown
     
 class WeightType(Enum):
