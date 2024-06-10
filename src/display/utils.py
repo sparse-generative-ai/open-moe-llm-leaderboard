@@ -79,7 +79,7 @@ class Tasks(Enum):
     # halueval_dial = Task("halueval_dialogue", "acc", "HaluDial/Acc")
 
     # # XXX include me back at some point
-    selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
+    # selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
     mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
     gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
     # gsm8k_cot = Task("gsm8k_cot", "em", "GSM8K COT") #GSM8K COT/EM (5-shot)
@@ -116,9 +116,9 @@ for task in Tasks:
     auto_eval_column_dict.append([f"{task.name}_end_to_end_time", ColumnContent, ColumnContent(f"{task.value.col_name} {E2Es}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_batch_size", ColumnContent, ColumnContent(f"{task.value.col_name} {BATCH_SIZE}", "number", True, hidden=True)])
     # auto_eval_column_dict.append([f"{task.name}_precision", ColumnContent, ColumnContent(f"{task.value.col_name} {PRECISION}", "str", True, hidden=True)])
-    auto_eval_column_dict.append([f"{task.name}_gpu_mem", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Mem}", "number", True, hidden=True)])
+    # auto_eval_column_dict.append([f"{task.name}_gpu_mem", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Mem}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_gpu", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Name}", "str", True, hidden=True)])
-    auto_eval_column_dict.append([f"{task.name}_gpu_util", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Util}", "number", True, hidden=True)])
+    # auto_eval_column_dict.append([f"{task.name}_gpu_util", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Util}", "number", True, hidden=True)])
     if task.value.benchmark in MULTIPLE_CHOICEs:
         continue
     # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
@@ -188,6 +188,7 @@ class InferenceFramework(Enum):
     # "moe-infinity", hf-chat
     MoE_Infinity = ModelDetails("moe-infinity")
     HF_Chat = ModelDetails("hf-chat")
+    VLLM = ModelDetails("vllm_moe")
     Unknown = ModelDetails("?")
 
     def to_str(self):
@@ -199,12 +200,13 @@ class InferenceFramework(Enum):
             return InferenceFramework.MoE_Infinity
         if inference_framework in ["hf-chat"]:
             return InferenceFramework.HF_Chat
+        if inference_framework in ["vllm_moe"]:
+            return InferenceFramework.VLLM
         return InferenceFramework.Unknown
 
 class GPUType(Enum):
-    H100_pcie = ModelDetails("NVIDIA-H100-PCIe-80GB")
+    H100_pcie = ModelDetails("NVIDIA-A100-SXM4-80GB")
     A100_pcie = ModelDetails("NVIDIA-A100-PCIe-80GB")
-    A5000 = ModelDetails("NVIDIA-RTX-A5000-24GB")
     Unknown = ModelDetails("?")
 
     def to_str(self):
@@ -216,8 +218,6 @@ class GPUType(Enum):
             return GPUType.A100_pcie
         if gpu_type in ["NVIDIA-A100-PCIe-80GB"]:
             return GPUType.H100_pcie
-        if gpu_type in ["NVIDIA-A5000-24GB"]:
-            return GPUType.A5000
         return GPUType.Unknown
     
 class WeightType(Enum):
