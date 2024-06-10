@@ -469,24 +469,47 @@ class HFLMWithMeasurement(HFLM):
         context_prefill_size = context_length
         kv_size = context_prefill_size * self.per_token_kv_size + (output_length - 1) * self.per_token_kv_size / 2
         
-        kv_size = kv_size / 1e9
+        kv_size = kv_size / 1e12
+        avg_context_length = (context_length + output_length) / 2
 
         end_to_end_time = (end - start) / self.batch_size
         prefilling_time = stop_watch.prefilling_time / self.batch_size
         decoding_time = stop_watch.decoding_time / self.batch_size
         token_per_sec = output_length / decoding_time
-        achieve_mem_bw = (self.model_size * self.precision_bytes / 1e9 + kv_size) * token_per_sec
         
-        avg_context_length = context_length + (output_length - 1) / 2
-        flops_per_token = 6 * self.n_layers * self.d_model * self.d_model + 2 * self.n_layers * avg_context_length * self.d_model + \
-            2 * self.n_layers * self.d_model * self.d_model + 2 * self.n_layers * (self.linear_count + self.element_wise_mul) * self.d_model * self.d_ff * self.n_experts_for_ffn + \
-                4 * self.d_model + 2 * self.d_model * self.n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * self._detect_num_gpus_used()
         
+        if "8x7" in self.pretrained:
+            activated_experts = 7.08
+            s_attn = 0.000134
+            s_expert = 0.00034
+        elif "8x22" in self.pretrained:
+            activated_experts = 7.33
+            s_attn = 0.0003
+            s_expert = 0.0006
+        elif "dbrx" in self.pretrained:
+            activated_experts = 13.49
+            s_attn = 0.0003
+            s_expert = 0.0004
+        elif "Qwen" in self.pretrained:
+            activated_experts = 33.32
+            s_attn = 0.000034
+            s_expert = 0.000017
+        
+        if "8bit" in self.precision:
+            val = 0.5
+        elif "4bit" in self.precision:
+            val = 0.25
+        else:
+            val = 1
+        
         ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
-        mfu = token_per_sec * flops_per_token / peak_flops
-        mbu = achieve_mem_bw / self.peak_bw
+        mfu = (token_per_sec * self.n_layers * 2 * ( self.d_ff * self.d_model * 3 * 2 + 
+                                                    avg_context_length * avg_context_length * self.d_model + 
+                                                    4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self._detect_num_gpus_used()) * val
+        mbu = ((self.n_layers*(activated_experts * s_expert * val + s_attn * val) + 
+                kv_size)/(self.batch_size / token_per_sec) ) / ( 1 * self._detect_num_gpus_used()) * val
         
         print(f"mfu: {mfu}, mbu: {mbu}")
         
