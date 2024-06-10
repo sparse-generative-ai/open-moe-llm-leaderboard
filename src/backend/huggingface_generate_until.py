@@ -24,6 +24,7 @@ class HFLMwithChatTemplate(HFLMWithMeasurement):
         if self.use_chat_template:
             try:
                 updated_strings = []
+                print(f"model: {self.model.name_or_path}")
                 for input_string in strings:
                     messages = [
                         {"role": "user", "content": f"{input_string}"},

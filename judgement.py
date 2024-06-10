@@ -55,8 +55,4 @@ for filename in sorted(os.listdir(args.judgment_kwargs_dir)):
     
     output_csv_path = 'arena_hard_output.csv'
     with open(output_csv_path, 'a', newline='', encoding='utf-8') as csv_file:
-        writer = csv.writer(csv_file)
-        # Write header
-        writer.writerow(['Model', 'Score'])
-        # Write file data
-        writer.writerows(output)
+        csv_file.write(f"model-score: {output}\n")
