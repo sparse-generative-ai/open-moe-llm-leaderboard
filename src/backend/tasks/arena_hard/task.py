@@ -72,7 +72,7 @@ class ArenaHard(ConfigurableTask):
         super().__init__(config={"metadata": {"version": self.VERSION}})
         # these end tokens are hard coded because of the current limitaion of the llm-eval.
         # self.generation_kwargs = {"until": ["\n\n", "<unk>", "<|im_end|>", "</s>", "<|endoftext|>"], "max_length": 512}
-        self.generation_kwargs = {"until": ["</s>", "<|im_end|>"], "max_gen_toks": 4096}
+        self.generation_kwargs = {"until": ["</s>", "<|im_end|>"], "max_length": 4096}
         # self.generation_kwargs_sampling_number = 5  # the number of sampling for self-consistence
         # self.generation_kwargs_sampling = {
         #     "temperature": 0.99,

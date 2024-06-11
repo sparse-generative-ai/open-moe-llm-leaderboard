@@ -124,7 +124,12 @@ class EvalResult:
 
                     # print('RESULTS', data['results'])
                     # print('XXX', benchmark, metric, value, multiplier)
-                    results[benchmark][metric] = value * multiplier
+                    if value == "auto":
+                        results[benchmark][metric] = "auto"
+                    if value == "N/A":
+                        results[benchmark][metric] = "-"
+                    else:
+                        results[benchmark][metric] = value * multiplier
 
         res = EvalResult(
             eval_name=result_key,

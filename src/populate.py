@@ -75,7 +75,7 @@ def get_leaderboard_df(
             df[col] = np.nan
 
     if not df.empty:
-        df = df.round(decimals=4)
+        df = df.round(decimals=2)
 
         # filter out if any of the benchmarks have not been produced
         # df = df[has_no_nan_values(df, benchmark_cols)]
