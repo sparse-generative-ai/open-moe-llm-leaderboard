@@ -65,11 +65,11 @@ class EvalResult:
         if len(org_and_model) == 1:
             org = None
             model = org_and_model[0]
-            result_key = f"{model}_{precision.value.name}"
+            result_key = f"{model}_{precision.value.name}_{inference_framework}"
         else:
             org = org_and_model[0]
             model = org_and_model[1]
-            result_key = f"{org}_{model}_{precision.value.name}"
+            result_key = f"{org}_{model}_{precision.value.name}_{inference_framework}"
         full_model = "/".join(org_and_model)
 
         still_on_hub, error, model_config = is_model_on_hub(
@@ -120,12 +120,13 @@ class EvalResult:
                         multiplier = 1.0
                     if "batch_" in metric or "Mem" in metric or "Util" in metric:
                         multiplier = 1
-
-
+                        
                     # print('RESULTS', data['results'])
                     # print('XXX', benchmark, metric, value, multiplier)
                     if value == "N/A":
-                        results[benchmark][metric] = None
+                        results[benchmark][metric] = "-"
+                    elif value == "auto":
+                        results[benchmark][metric] = "auto"
                     else:
                         results[benchmark][metric] = value * multiplier
 
