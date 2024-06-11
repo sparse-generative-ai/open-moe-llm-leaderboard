@@ -37,9 +37,7 @@ gpu_metrics_to_name_map = {
     GPU_Mem: GPU_Mem,
     "batch_size": BATCH_SIZE,
     "precision": PRECISION,
-    GPU_Name: GPU_Name,
-    MFU: MFU,
-    MBU: MBU
+    GPU_Name: GPU_Name
 }
 
 @dataclass
