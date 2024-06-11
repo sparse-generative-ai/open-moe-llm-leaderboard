@@ -52,7 +52,7 @@ class StopWatch(TextStreamer):
             self.decoding_time = time() - self.start_decoding
         return
     
-model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+model_id = "mistralai/Mixtral-8x22B-Instruct-v0.1"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, device_map="auto", torch_dtype=precision, load_in_4bit=args.use_int4, load_in_8bit=args.use_int8)
 
@@ -140,8 +140,6 @@ for batch in tqdm(dataloader):
                     "input_length": input_length,
                     "output_length": output_length}
         result_dict["results"].append(res_dict)
-        count += 1
-    it += 1
     # if it == 2:
     #     break
 
