@@ -282,7 +282,6 @@ def get_raw_eval_results(results_path: str, requests_path: str, is_backend: bool
         eval_result.update_with_request_file(requests_path)
         # Store results of same eval together
         eval_name = eval_result.eval_name
-        print(eval_name)
         if eval_name in eval_results.keys():
             eval_results[eval_name].results.update({k: v for k, v in eval_result.results.items() if v is not None})
         else:
