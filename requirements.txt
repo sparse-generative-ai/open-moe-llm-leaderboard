@@ -4,7 +4,7 @@ APScheduler
 black
 click
 datasets
-gradio==4.36.1
+gradio
 gradio_client
 huggingface-hub
 matplotlib
