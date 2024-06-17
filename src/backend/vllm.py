@@ -91,7 +91,7 @@ class VLLM_MOE(TemplateLM):
         max_length: int = None,
         max_model_len: int = None,
         seed: int = 1234,
-        gpu_memory_utilization: float = 0.6,
+        gpu_memory_utilization: float = 0.9,
         device: str = "cuda",
         data_parallel_size: int = 1,
         lora_local_path: str = None,
