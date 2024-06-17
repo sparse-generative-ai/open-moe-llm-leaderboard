@@ -277,15 +277,22 @@ def get_raw_eval_results(results_path: str, requests_path: str, is_backend: bool
 
     eval_results = {}
     for model_result_filepath in tqdm(model_result_filepaths, desc="reading model_result_filepaths"):
-        # Creation of result
-        eval_result = EvalResult.init_from_json_file(model_result_filepath, is_backend=is_backend)
-        eval_result.update_with_request_file(requests_path)
-        # Store results of same eval together
-        eval_name = eval_result.eval_name
-        if eval_name in eval_results.keys():
-            eval_results[eval_name].results.update({k: v for k, v in eval_result.results.items() if v is not None})
-        else:
-            eval_results[eval_name] = eval_result
+        try:
+            # Creation of result
+            eval_result = EvalResult.init_from_json_file(model_result_filepath, is_backend=is_backend)
+            eval_result.update_with_request_file(requests_path)
+            
+            # Store results of same eval together
+            eval_name = eval_result.eval_name
+            if eval_name in eval_results.keys():
+                eval_results[eval_name].results.update({k: v for k, v in eval_result.results.items() if v is not None})
+            else:
+                eval_results[eval_name] = eval_result
+                
+        except (FileNotFoundError, ValueError, KeyError, json.JSONDecodeError) as e:
+            # Log the error and continue with the next file
+            print(f"Error processing file {model_result_filepath}: {e}")
+            continue
 
     results = []
     for v in eval_results.values():
