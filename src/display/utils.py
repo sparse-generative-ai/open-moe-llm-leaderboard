@@ -13,6 +13,7 @@ TS = "T/s" #Decoding throughput (tok/s)
 InFrame = "Method" #"Inference framework"
 MULTIPLE_CHOICEs = ["mmlu"]
 
+
 GPU_TEMP = 'Temp(C)'
 GPU_Power = 'Power(W)'
 GPU_Mem = 'Mem(G)'
@@ -79,7 +80,7 @@ class Tasks(Enum):
     # halueval_dial = Task("halueval_dialogue", "acc", "HaluDial/Acc")
 
     # # XXX include me back at some point
-    selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
+    # selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
     mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
     gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
     # gsm8k_cot = Task("gsm8k_cot", "em", "GSM8K COT") #GSM8K COT/EM (5-shot)
@@ -115,7 +116,7 @@ for task in Tasks:
     # System performance metrics
     auto_eval_column_dict.append([f"{task.name}_end_to_end_time", ColumnContent, ColumnContent(f"{task.value.col_name} {E2Es}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_batch_size", ColumnContent, ColumnContent(f"{task.value.col_name} {BATCH_SIZE}", "number", True, hidden=True)])
-    # auto_eval_column_dict.append([f"{task.name}_precision", ColumnContent, ColumnContent(f"{task.value.col_name} {PRECISION}", "str", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_precision", ColumnContent, ColumnContent(f"{task.value.col_name} {PRECISION}", "str", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_gpu_mem", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Mem}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_gpu", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Name}", "str", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_gpu_util", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Util}", "number", True, hidden=True)])
@@ -123,8 +124,11 @@ for task in Tasks:
         continue
     # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
+    if task.value.benchmark != "gsm8k_custom":
+        continue
     auto_eval_column_dict.append([f"{task.name}_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
+    
 
 
 # Model information
@@ -202,7 +206,7 @@ class InferenceFramework(Enum):
         return InferenceFramework.Unknown
 
 class GPUType(Enum):
-    H100_pcie = ModelDetails("NVIDIA-H100-PCIe-80GB")
+    A100_sxm4 = ModelDetails("NVIDIA-A100-SMX4-80GB")
     A100_pcie = ModelDetails("NVIDIA-A100-PCIe-80GB")
     A5000 = ModelDetails("NVIDIA-RTX-A5000-24GB")
     Unknown = ModelDetails("?")
@@ -212,8 +216,8 @@ class GPUType(Enum):
 
     @staticmethod
     def from_str(gpu_type: str):
-        if gpu_type in ["NVIDIA-H100-PCIe-80GB"]:
-            return GPUType.A100_pcie
+        if gpu_type in ["NVIDIA-A100-SXM4-80GB"]:
+            return GPUType.A100_sxm4
         if gpu_type in ["NVIDIA-A100-PCIe-80GB"]:
             return GPUType.H100_pcie
         if gpu_type in ["NVIDIA-A5000-24GB"]:
