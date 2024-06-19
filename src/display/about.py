@@ -10,9 +10,9 @@ The OPEN-MOE-LLM-LEADERBOARD includes generation and multiple choice tasks to me
 
 
 Tasks:
-- **Generation Self-consistancy** -- [SelfCheckGPT](https://github.com/potsawee/selfcheckgpt)
 - **Multiple Choice Performance** -- [MMLU](https://arxiv.org/abs/2009.03300)
 - **Mathematics Problem-Solving Performance** -- [GSM8K](https://arxiv.org/abs/2110.14168)
+- **AI Judgment Scores for Responses to Complex User Queries** -- [Arena_Hard](https://lmsys.org/blog/2024-04-19-arena-hard/)
 
 Columns and Metrics:
 - Method: The MOE LLMs inference framework.

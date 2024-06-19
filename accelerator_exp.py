@@ -52,7 +52,7 @@ class StopWatch(TextStreamer):
             self.decoding_time = time() - self.start_decoding
         return
     
-model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+model_id = "mistralai/Mixtral-8x22B-Instruct-v0.1"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, device_map="auto", torch_dtype=precision, load_in_4bit=args.use_int4, load_in_8bit=args.use_int8)
 
@@ -77,22 +77,7 @@ if batch_size == 1:
     
     dataloader = zip(encodings, attention_masks)
 else:
-    tokenizer.padding_side = "left"
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    encodings = tokenizer(
-        updated_strings,
-        truncation=False,
-        padding="longest",
-        return_tensors="pt",
-        add_special_tokens=False)
-
-    input_ids = encodings["input_ids"]
-    attention_mask = encodings["attention_mask"]
-    
-    inputs = torch.utils.data.TensorDataset(input_ids, attention_mask)
-
-    dataloader = torch.utils.data.dataloader.DataLoader(inputs, batch_size=batch_size, shuffle=False, num_workers=4)
+    dataloader = [updated_strings[i:i + batch_size] for i in range(0, len(updated_strings), batch_size)]
 
 until = ["Question:", "Question", "</s>", "<|im_end|>"]
 result_dict = {"avg_end2end_time":[], "avg_prefilling_time":[], "avg_decoding_tp":[], "results":[]}
@@ -101,9 +86,20 @@ count = 1
 it = 0
 for batch in tqdm(dataloader):
     streamer = StopWatch(tokenizer)
-    input_id, attn_mask = batch
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    encodings = tokenizer(
+        batch,
+        truncation=False,
+        padding="longest",
+        return_tensors="pt",
+        add_special_tokens=False)
+
+    input_ids = encodings["input_ids"]
+    attention_mask = encodings["attention_mask"]
+    
     input_id = input_id.to(model.device)
-    attn_mask = attn_mask.to(model.device)
+    attn_mask = attention_mask.to(model.device)
     stopping_criteria = stop_sequences_criteria(
             tokenizer, until, input_id.shape[1], input_id.shape[0]
         )
@@ -140,8 +136,6 @@ for batch in tqdm(dataloader):
                     "input_length": input_length,
                     "output_length": output_length}
         result_dict["results"].append(res_dict)
-        count += 1
-    it += 1
     # if it == 2:
     #     break
 

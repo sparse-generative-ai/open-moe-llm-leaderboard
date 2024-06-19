@@ -75,7 +75,7 @@ def restart_space():
 
 
 def init_space():
-    dataset_df = get_dataset_summary_table(file_path="blog/Hallucination-Leaderboard-Summary.csv")
+    # dataset_df = get_dataset_summary_table(file_path="blog/Hallucination-Leaderboard-Summary.csv")
 
     if socket.gethostname() not in {"neuromancer"}:
         # sync model_type with open-llm-leaderboard
@@ -90,7 +90,8 @@ def init_space():
     finished_eval_queue_df, running_eval_queue_df, pending_eval_queue_df = get_evaluation_queue_df(
         EVAL_REQUESTS_PATH, EVAL_COLS
     )
-    return dataset_df, original_df, finished_eval_queue_df, running_eval_queue_df, pending_eval_queue_df
+    # return dataset_df, original_df, finished_eval_queue_df, running_eval_queue_df, pending_eval_queue_df
+    return None, original_df, finished_eval_queue_df, running_eval_queue_df, pending_eval_queue_df
     
     
 def add_benchmark_columns(shown_columns):
@@ -353,21 +354,21 @@ with demo:
                     queue=True,
                 )
 
-        with gr.TabItem("About", elem_id="llm-benchmark-tab-table", id=2):
-            gr.Markdown(LLM_BENCHMARKS_TEXT, elem_classes="markdown-text")
+        # with gr.TabItem("About", elem_id="llm-benchmark-tab-table", id=2):
+        #     gr.Markdown(LLM_BENCHMARKS_TEXT, elem_classes="markdown-text")
 
-            dataset_table = gr.components.Dataframe(
-                value=dataset_df,
-                headers=list(dataset_df.columns),
-                datatype=["str", "markdown", "str", "str", "str"],
-                elem_id="dataset-table",
-                interactive=False,
-                visible=True,
-                column_widths=["15%", "20%"],
-            )
+        #     dataset_table = gr.components.Dataframe(
+        #         value=dataset_df,
+        #         headers=list(dataset_df.columns),
+        #         datatype=["str", "markdown", "str", "str", "str"],
+        #         elem_id="dataset-table",
+        #         interactive=False,
+        #         visible=True,
+        #         column_widths=["15%", "20%"],
+        #     )
 
-            gr.Markdown(LLM_BENCHMARKS_DETAILS, elem_classes="markdown-text")
-            gr.Markdown(FAQ_TEXT, elem_classes="markdown-text")
+        #     gr.Markdown(LLM_BENCHMARKS_DETAILS, elem_classes="markdown-text")
+        #     gr.Markdown(FAQ_TEXT, elem_classes="markdown-text")
 
         with gr.TabItem("Submit a model ", elem_id="llm-benchmark-tab-table", id=3):
             with gr.Column():
