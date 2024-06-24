@@ -458,6 +458,7 @@ def get_args():
     parser.add_argument("--gpu-type", type=str, default="NVIDIA-A100-PCIe-80GB", 
                         help="GPU type. NVIDIA-A100-PCIe-80GB; NVIDIA-RTX-A5000-24GB; NVIDIA-H100-PCIe-80GB")
     parser.add_argument("--debug_repo", action="store_true", help="Use debug repo")
+    parser.add_argument("--model_type", type=str, default="chat", help="Model type")
     return parser.parse_args()
 
 
@@ -488,7 +489,8 @@ if __name__ == "__main__":
                         json_filepath="",
                         precision=precision,  # Use precision from arguments
                         inference_framework=args.inference_framework,  # Use inference framework from arguments
-                        gpu_type=args.gpu_type
+                        gpu_type=args.gpu_type,
+                        model_type=args.model_type,
                     )
                     curr_gpu_type = get_gpu_details()
                     if eval_request.gpu_type != curr_gpu_type:

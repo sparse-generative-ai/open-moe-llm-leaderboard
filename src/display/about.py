@@ -19,8 +19,8 @@ Columns and Metrics:
 - E2E(s): Average End to End generation time in seconds.
 - PRE(s): Prefilling Time of input prompt in seconds.
 - T/s: Tokens throughout per second.
-- MBU(%): Model Bandwidth Utilization.
-- MFU(%): Model FLOPs Utilization.
+- S-MBU(%): Sparse Model Bandwidth Utilization.
+- S-MFU(%): Sparse Model FLOPs Utilization.
 - Precision: The precison of used model.
 
 """
