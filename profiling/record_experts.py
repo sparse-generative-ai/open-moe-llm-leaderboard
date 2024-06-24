@@ -99,6 +99,7 @@ if __name__ == "__main__":
     if args.task == "gsm8k":
         gsm8k = load_dataset("gsm8k", "main", split="test")
         all_input_raw = gsm8k['question']
+        all_input_raw = gsm8k['question']
         max_new_tokens = 256
     elif args.task == 'arena':
         max_new_tokens = 4096
