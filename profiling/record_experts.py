@@ -98,11 +98,11 @@ if __name__ == "__main__":
     model.eval()
     if args.task == "gsm8k":
         gsm8k = load_dataset("gsm8k", "main", split="test")
-        all_input_raw = gsm8k['questions']
+        all_input_raw = gsm8k['question']
         max_new_tokens = 256
     elif args.task == 'arena':
         max_new_tokens = 4096
-        data_path = '/home/jysc/open-moe-llm-leaderboard/src/backend/tasks/arena_hard/question.jsonl'
+        data_path = '/root/open-moe-llm-leaderboard/src/backend/tasks/arena_hard/question.jsonl'
         data = load_questions(data_path)
         dataset = transform_data(data)
         dataset = Dataset.from_dict({"question_id": [item["question_id"] for item in dataset],
