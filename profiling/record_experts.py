@@ -98,11 +98,11 @@ if __name__ == "__main__":
     model.eval()
     if args.task == "gsm8k":
         gsm8k = load_dataset("gsm8k", "main", split="test")
-        all_input_raw = gsm8k['questions']
+        all_input_raw = gsm8k['question']
         max_new_tokens = 256
     elif args.task == 'arena':
         max_new_tokens = 4096
-        data_path = '/home/jysc/open-moe-llm-leaderboard/src/backend/tasks/arena_hard/question.jsonl'
+        data_path = '/home/a100user/open-moe-llm-leaderboard/src/backend/tasks/arena_hard/question.jsonl'
         data = load_questions(data_path)
         dataset = transform_data(data)
         dataset = Dataset.from_dict({"question_id": [item["question_id"] for item in dataset],
@@ -155,8 +155,8 @@ if __name__ == "__main__":
     logits = []
     for record_item in record:
         logits.append(record_item["router_logits"])
-    with open(f"./trace_res/decoding_trace_{model_name}_bs{batch_size}_tot{len(record)}.pkl", "wb") as f:
+    with open(f"./trace_res/{args.task}_decoding_trace_{model_name}_bs{batch_size}_tot{len(record)}.pkl", "wb") as f:
         pickle.dump(record, f)
-    with open(f"./logits_res/decoding_logits_{model_name}_bs{batch_size}_tot{len(record)}.pkl", "wb") as f:
+    with open(f"./logits_res/{args.task}_decoding_logits_{model_name}_bs{batch_size}_tot{len(record)}.pkl", "wb") as f:
         pickle.dump(logits, f)
     
