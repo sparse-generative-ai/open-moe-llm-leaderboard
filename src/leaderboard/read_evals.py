@@ -140,6 +140,7 @@ class EvalResult:
             revision=config.get("model_sha", ""),
             still_on_hub=still_on_hub,
             architecture=architecture,
+            model_type=ModelType.from_str(config.get("model_type", "")),
             inference_framework=inference_framework,
         )
 
@@ -174,22 +175,22 @@ class EvalResult:
 
         # breakpoint()
         # average = sum([v for v in self.results.values() if v is not None]) / len(Tasks)
-
+        
         data_dict = {
             "eval_name": self.eval_name,  # not a column, just a save name,
             AutoEvalColumn.precision.name: self.precision.value.name,
-            AutoEvalColumn.model_type.name: self.model_type.value.name,
+            # AutoEvalColumn.model_type.name: self.model_type.value.name,
             AutoEvalColumn.model_type_symbol.name: self.model_type.value.symbol,
-            AutoEvalColumn.weight_type.name: self.weight_type.value.name,
-            AutoEvalColumn.architecture.name: self.architecture,
+            # AutoEvalColumn.weight_type.name: self.weight_type.value.name,
+            # AutoEvalColumn.architecture.name: self.architecture,
             AutoEvalColumn.model.name: make_clickable_model(self.full_model),
             AutoEvalColumn.dummy.name: self.full_model,
-            AutoEvalColumn.revision.name: self.revision,
-            # AutoEvalColumn.average.name: average,
-            AutoEvalColumn.license.name: self.license,
-            AutoEvalColumn.likes.name: self.likes,
-            AutoEvalColumn.params.name: self.num_params,
-            AutoEvalColumn.still_on_hub.name: self.still_on_hub,
+            # AutoEvalColumn.revision.name: self.revision,
+            # # AutoEvalColumn.average.name: average,
+            # AutoEvalColumn.license.name: self.license,
+            # AutoEvalColumn.likes.name: self.likes,
+            # AutoEvalColumn.params.name: self.num_params,
+            # AutoEvalColumn.still_on_hub.name: self.still_on_hub,
             AutoEvalColumn.inference_framework.name: self.inference_framework,
         }
 
