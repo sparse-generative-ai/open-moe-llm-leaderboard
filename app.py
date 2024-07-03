@@ -11,6 +11,7 @@ import time
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from huggingface_hub import snapshot_download
+from pytz import utc
 
 from src.display.about import (
     CITATION_BUTTON_LABEL,
@@ -159,6 +160,7 @@ def filter_models(df: pd.DataFrame, type_query: list, size_query: list, precisio
     type_emoji = [t[0] for t in type_query]
     filtered_df = filtered_df.loc[df[AutoEvalColumn.model_type_symbol.name].isin(type_emoji)]
     filtered_df = filtered_df.loc[df[AutoEvalColumn.precision.name].isin(precision_query + ["None"])]
+    filtered_df = filtered_df.loc[df[AutoEvalColumn.inference_framework.name].isin(size_query)]
 
     # numeric_interval = pd.IntervalIndex(sorted([NUMERIC_INTERVALS[s] for s in size_query]))
     # params_column = pd.to_numeric(df[AutoEvalColumn.params.name], errors="coerce")
@@ -257,7 +259,7 @@ with demo:
                                 for c in fields(AutoEvalColumn)
                                 if c.displayed_by_default and not c.hidden and not c.never_hidden
                             ],
-                            label="Select columns to show",
+                            label="Tasks",
                             elem_id="column-select",
                             interactive=True,
                         )

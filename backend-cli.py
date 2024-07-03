@@ -489,6 +489,7 @@ def get_args():
     parser.add_argument("--debug_repo", action="store_true", help="Use debug repo")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("--sampling", action="store_true", help="Hard tasks to debug")
+    parser.add_argument("--model_type", type=str, default="chat", help="Model type")
     return parser.parse_args()
 
 
@@ -522,6 +523,7 @@ if __name__ == "__main__":
                         precision=precision,  # Use precision from arguments
                         inference_framework=args.inference_framework,  # Use inference framework from arguments
                         gpu_type=args.gpu_type,
+                        model_type=args.model_type,
                         batch_size=args.batch_size,
                     )
                     curr_gpu_type = get_gpu_details()

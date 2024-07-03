@@ -19,8 +19,8 @@ GPU_Power = 'Power(W)'
 GPU_Mem = 'Mem(G)'
 GPU_Name = "GPU"
 GPU_Util = 'Util(%)'
-MFU = 'MFU(%)'
-MBU = 'MBU(%)'
+MFU = 'S-MFU(%)'
+MBU = 'S-MBU(%)'
 BATCH_SIZE = 'bs'
 PRECISION = "Precision"
 system_metrics_to_name_map = {
@@ -108,7 +108,7 @@ auto_eval_column_dict.append(["model", ColumnContent, ColumnContent("Model", "ma
 # # auto_eval_column_dict.append(["average", ColumnContent, ColumnContent("Avg", "number", True)])
 
 # Inference framework
-auto_eval_column_dict.append(["inference_framework", ColumnContent, ColumnContent(f"{InFrame}", "str", True)])
+auto_eval_column_dict.append(["inference_framework", ColumnContent, ColumnContent(f"{InFrame}", "str", True, dummy=True)])
 
 for task in Tasks:
     auto_eval_column_dict.append([task.name, ColumnContent, ColumnContent(task.value.col_name, "number", True)])
@@ -131,15 +131,15 @@ for task in Tasks:
 
 
 # Model information
-auto_eval_column_dict.append(["model_type", ColumnContent, ColumnContent("Type", "str", False)])
-auto_eval_column_dict.append(["architecture", ColumnContent, ColumnContent("Architecture", "str", False)])
-auto_eval_column_dict.append(["weight_type", ColumnContent, ColumnContent("Weight type", "str", False, True)])
-auto_eval_column_dict.append(["precision", ColumnContent, ColumnContent("Precision", "str", True)])
-auto_eval_column_dict.append(["license", ColumnContent, ColumnContent("Hub License", "str", False)])
-auto_eval_column_dict.append(["params", ColumnContent, ColumnContent("#Params (B)", "number", False)])
-auto_eval_column_dict.append(["likes", ColumnContent, ColumnContent("Hub ❤️", "number", False)])
-auto_eval_column_dict.append(["still_on_hub", ColumnContent, ColumnContent("Available on the hub", "bool", False)])
-auto_eval_column_dict.append(["revision", ColumnContent, ColumnContent("Model sha", "str", False, False)])
+auto_eval_column_dict.append(["model_type", ColumnContent, ColumnContent("Type", "str", False, dummy=True)])
+# auto_eval_column_dict.append(["architecture", ColumnContent, ColumnContent("Architecture", "str", False)])
+# auto_eval_column_dict.append(["weight_type", ColumnContent, ColumnContent("Weight type", "str", False, True)])
+auto_eval_column_dict.append(["precision", ColumnContent, ColumnContent("Precision", "str", True, dummy=True)])
+# auto_eval_column_dict.append(["license", ColumnContent, ColumnContent("Hub License", "str", False)])
+# auto_eval_column_dict.append(["params", ColumnContent, ColumnContent("#Params (B)", "number", False)])
+# auto_eval_column_dict.append(["likes", ColumnContent, ColumnContent("Hub ❤️", "number", False)])
+# auto_eval_column_dict.append(["still_on_hub", ColumnContent, ColumnContent("Available on the hub", "bool", False)])
+# auto_eval_column_dict.append(["revision", ColumnContent, ColumnContent("Model sha", "str", False, False)])
 # Dummy column for the search bar (hidden by the custom CSS)
 auto_eval_column_dict.append(["dummy", ColumnContent, ColumnContent("model_name_for_query", "str", False, dummy=True)])
 
@@ -165,10 +165,10 @@ class ModelDetails:
 
 
 class ModelType(Enum):
-    PT = ModelDetails(name="pretrained", symbol="🟢")
-    FT = ModelDetails(name="fine-tuned on domain-specific datasets", symbol="🔶")
+    # PT = ModelDetails(name="pretrained", symbol="🟢")
+    # FT = ModelDetails(name="fine-tuned on domain-specific datasets", symbol="🔶")
     chat = ModelDetails(name="chat models (RLHF, DPO, IFT, ...)", symbol="💬")
-    merges = ModelDetails(name="base merges and moerges", symbol="🤝")
+    # merges = ModelDetails(name="base merges and moerges", symbol="🤝")
     Unknown = ModelDetails(name="", symbol="?")
 
     def to_str(self, separator=" "):
@@ -176,22 +176,23 @@ class ModelType(Enum):
 
     @staticmethod
     def from_str(type):
-        if "fine-tuned" in type or "🔶" in type:
-            return ModelType.FT
-        if "pretrained" in type or "🟢" in type:
-            return ModelType.PT
+        # if "fine-tuned" in type or "🔶" in type:
+        #     return ModelType.FT
+        # if "pretrained" in type or "🟢" in type:
+        #     return ModelType.PT
         if any([k in type for k in ["instruction-tuned", "RL-tuned", "chat", "🟦", "⭕", "💬"]]):
             return ModelType.chat
-        if "merge" in type or "🤝" in type:
-            return ModelType.merges
+        # if "merge" in type or "🤝" in type:
+        #     return ModelType.merges
         return ModelType.Unknown
 
 
 class InferenceFramework(Enum):
     # "moe-infinity", hf-chat
-    MoE_Infinity = ModelDetails("moe-infinity")
+    # MoE_Infinity = ModelDetails("moe-infinity")
     HF_Chat = ModelDetails("hf-chat")
     VLLM = ModelDetails("vllm_moe")
+    TRTLLM = ModelDetails("tensorrt_llm")
     Unknown = ModelDetails("?")
 
     def to_str(self):
@@ -199,8 +200,10 @@ class InferenceFramework(Enum):
 
     @staticmethod
     def from_str(inference_framework: str):
-        if inference_framework in ["moe-infinity"]:
-            return InferenceFramework.MoE_Infinity
+        # if inference_framework in ["moe-infinity"]:
+        #     return InferenceFramework.MoE_Infinity
+        if inference_framework in ["tensorrt_llm"]:
+            return InferenceFramework.TRTLLM
         if inference_framework in ["hf-chat"]:
             return InferenceFramework.HF_Chat
         if inference_framework in ["vllm_moe"]:
@@ -231,28 +234,28 @@ class WeightType(Enum):
 
 
 class Precision(Enum):
-    float32 = ModelDetails("float32")
-    float16 = ModelDetails("float16")
+    # float32 = ModelDetails("float32")
+    # float16 = ModelDetails("float16")
     bfloat16 = ModelDetails("bfloat16")
     qt_8bit = ModelDetails("8bit")
     qt_4bit = ModelDetails("4bit")
-    qt_GPTQ = ModelDetails("GPTQ")
+    # qt_GPTQ = ModelDetails("GPTQ")
     Unknown = ModelDetails("?")
 
     @staticmethod
     def from_str(precision: str):
-        if precision in ["torch.float32", "float32"]:
-            return Precision.float32
-        if precision in ["torch.float16", "float16"]:
-            return Precision.float16
+        # if precision in ["torch.float32", "float32"]:
+        #     return Precision.float32
+        # if precision in ["torch.float16", "float16"]:
+        #     return Precision.float16
         if precision in ["torch.bfloat16", "bfloat16"]:
             return Precision.bfloat16
         if precision in ["8bit"]:
             return Precision.qt_8bit
         if precision in ["4bit"]:
             return Precision.qt_4bit
-        if precision in ["GPTQ", "None"]:
-            return Precision.qt_GPTQ
+        # if precision in ["GPTQ", "None"]:
+        #     return Precision.qt_GPTQ
         return Precision.Unknown
 
 
