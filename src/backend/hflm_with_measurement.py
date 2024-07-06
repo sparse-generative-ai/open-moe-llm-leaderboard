@@ -480,20 +480,50 @@ class HFLMWithMeasurement(HFLM):
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * self._detect_num_gpus_used()
         
+        # print(self.batch_size)
+        # print(max_tokens)
         if "8x7" in self.pretrained:
-            activated_experts = 7.08
+            print("yeah")
+            if max_tokens==256:
+                if self.batch_size == 32:
+                    activated_experts = 7.89
+            elif max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 6.44
+                elif self.batch_size == 20:
+                    activated_experts = 6.78
+            # activated_experts = 7.08
             s_attn = 0.000134
             s_expert = 0.00034
         elif "8x22" in self.pretrained:
-            activated_experts = 7.33
+            # activated_experts = 7.33
+            if max_tokens==256:
+                if self.batch_size == 20:
+                    activated_experts = 7.68
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 5.68
+                elif self.batch_size == 5:
+                    activated_experts = 5.34
             s_attn = 0.0003
             s_expert = 0.0006
         elif "dbrx" in self.pretrained:
-            activated_experts = 13.49
+            # activated_experts = 13.49
+            if max_tokens==256:
+                if self.batch_size == 8:
+                    activated_experts = 12.27
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 12.2
+                elif self.batch_size == 5:
+                    activated_experts = 10.51
             s_attn = 0.0003
             s_expert = 0.0004
         elif "Qwen" in self.pretrained:
-            activated_experts = 33.32
+            # activated_experts = 33.32
+            if max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 27.25
             s_attn = 0.000034
             s_expert = 0.000017
         

@@ -123,8 +123,8 @@ for task in Tasks:
         continue
     # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
-    if task.value.benchmark != "gsm8k_custom":
-        continue
+    # if task.value.benchmark != "gsm8k_custom":
+    #     continue
     auto_eval_column_dict.append([f"{task.name}_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
     
@@ -192,6 +192,7 @@ class InferenceFramework(Enum):
     # MoE_Infinity = ModelDetails("moe-infinity")
     HF_Chat = ModelDetails("hf-chat")
     VLLM = ModelDetails("vllm_moe")
+    VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     TRTLLM = ModelDetails("tensorrt_llm")
     Unknown = ModelDetails("?")
 
@@ -208,6 +209,8 @@ class InferenceFramework(Enum):
             return InferenceFramework.HF_Chat
         if inference_framework in ["vllm_moe"]:
             return InferenceFramework.VLLM
+        if inference_framework in ["vllm_moe_fixbs"]:
+            return InferenceFramework.VLLM_FIX
         return InferenceFramework.Unknown
 
 class GPUType(Enum):
