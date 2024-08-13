@@ -188,6 +188,7 @@ class InferenceFramework(Enum):
     HF_Chat = ModelDetails("hf-chat")
     VLLM = ModelDetails("vllm_moe")
     TRTLLM = ModelDetails("tensorrt_llm")
+    VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     Unknown = ModelDetails("?")
 
     def to_str(self):
@@ -203,6 +204,8 @@ class InferenceFramework(Enum):
             return InferenceFramework.HF_Chat
         if inference_framework in ["vllm_moe"]:
             return InferenceFramework.VLLM
+        if inference_framework in ["vllm_moe_fixbs"]:
+            return InferenceFramework.VLLM_FIX
         return InferenceFramework.Unknown
 
 class GPUType(Enum):
