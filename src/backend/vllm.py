@@ -93,7 +93,7 @@ class VLLM_MOE(TemplateLM):
         seed: int = 1234,
         gpu_memory_utilization: float = 0.9,
         device: str = "cuda",
-        data_parallel_size: int = 1,
+        data_parallel_size: int = 8,
         lora_local_path: str = None,
         **kwargs,
     ):
@@ -107,12 +107,13 @@ class VLLM_MOE(TemplateLM):
             )
 
         assert "cuda" in device or device is None, "vLLM only supports CUDA"
-        assert (
-            max_length is None or max_model_len is None
-        ), "Either max_length or max_model_len may be provided, but not both"
+        # assert (
+        #     max_length is None or max_model_len is None
+        # ), "Either max_length or max_model_len may be provided, but not both"
 
         self._max_length = max_model_len if max_model_len is not None else max_length
         self.tensor_parallel_size = torch.cuda.device_count()
+        self.tensor_parallel_size = 1
         self.data_parallel_size = int(data_parallel_size)
         self.model_args = {
             "model": pretrained,
@@ -167,6 +168,84 @@ class VLLM_MOE(TemplateLM):
             )
 
         self._max_gen_toks = max_gen_toks
+
+        model_config = self.model.llm_engine.model_config
+        parallel_config = self.model.llm_engine.parallel_config
+        hf_config = model_config.hf_text_config
+        self.d_model = model_config.get_hidden_size()
+
+        #FIXME Hardcoded, currently do not know how to get them from vLLM. (Yinsicheng)
+        if "8x7" in pretrained:
+            model_size_param = 46.7e9
+            self.element_wise_mul = 0
+            self.linear_count = 3
+        elif "8x22" in pretrained:
+            model_size_param = 141e9
+            self.element_wise_mul = 0
+            self.linear_count = 3
+        elif "dbrx" in pretrained:
+            model_size_param = 132e9
+            self.linear_count = 3
+            self.element_wise_mul = 1
+        elif "Qwen" in pretrained:
+            model_size_param = 14.3e9
+            self.linear_count = 3
+            self.element_wise_mul = 1
+        #End
+
+        self.n_layers = model_config.get_num_layers(parallel_config)
+        self.n_kv_heads = model_config.get_num_kv_heads(parallel_config)
+        self.d_head = model_config.get_head_size()
+        self.precision_bytes = 2
+
+        ## Number of experts
+        if hasattr(hf_config, "num_local_experts"):
+            num_experts = hf_config.num_local_experts
+        elif hasattr(hf_config, "num_experts"):
+            num_experts = hf_config.num_experts
+        elif hasattr(hf_config, "ffn_config"):
+            num_experts = hf_config.ffn_config.moe_num_experts
+        else:
+            num_experts = 1
+
+        if hasattr(hf_config, "num_experts_per_tok"):
+            n_experts_per_tok = hf_config.num_experts_per_tok
+        elif hasattr(hf_config, "num_selected_experts"):
+            n_experts_per_tok = hf_config.num_selected_experts
+        elif hasattr(hf_config, "ffn_config"):
+            n_experts_per_tok = hf_config.ffn_config.moe_top_k
+        else:
+            n_experts_per_tok = 1
+        
+        if hasattr(hf_config, "ffn_dim"):
+            self.d_ff = hf_config.ffn_dim
+        elif hasattr(hf_config, "intermediate_size"):
+            self.d_ff = hf_config.intermediate_size
+        elif hasattr(hf_config, "d_ff"):
+            self.d_ff = hf_config.d_ff
+        elif hasattr(hf_config, "ff_ratio"):
+            self.d_ff = self.d_model * hf_config.ff_ratio
+        elif hasattr(hf_config, "ffn_config"):
+            self.d_ff = hf_config.ffn_config.ffn_hidden_size
+        else:
+            raise ValueError("Unknown FFN dimension")
+        
+        if "Qwen" in pretrained:
+            self.d_ff = hf_config.moe_intermediate_size
+            self.n_experts_for_ffn = 4 + n_experts_per_tok
+        else:
+            self.n_experts_for_ffn = n_experts_per_tok
+
+        ffn_params = self.n_layers * self.d_ff * self.linear_count * self.d_model
+
+        shared_params = model_size_param - num_experts * ffn_params
+
+        self.model_size = shared_params + n_experts_per_tok * ffn_params
+
+        self.per_token_kv_size = 2 * self.n_layers * self.d_head * self.n_kv_heads * self.precision_bytes
+
+        self.n_vocab = hf_config.vocab_size
+
 
         if lora_local_path is not None:
             assert parse_version(version("vllm")) > parse_version(
@@ -257,7 +336,8 @@ class VLLM_MOE(TemplateLM):
             @ray.remote
             def run_inference_one_model(
                 model_args: dict, sampling_params, requests: List[List[int]]
-            ):
+            ):  
+                LLM._run_engine = run_engine_wrapper(orig_run_engine)
                 llm = LLM(**model_args)
                 return llm.generate(
                     prompt_token_ids=requests, sampling_params=sampling_params
@@ -373,7 +453,7 @@ class VLLM_MOE(TemplateLM):
         # so that we don't try to execute e.g. greedy sampling and temp=0.8 sampling
         # in the same batch.
         re_ords = Collator(requests, _collate_gen, group_by="gen_kwargs")
-        # self.batch_size = "auto"
+        self.batch_size = "auto"
         chunks = re_ords.get_batched(
             n=int(self.batch_size) if self.batch_size != "auto" else 0, batch_fn=None
         )

@@ -207,6 +207,6 @@ def transfer_precision2bytes(precision):
     else:
         raise ValueError(f"Unsupported precision: {precision}")
 
-if __name__ == "__main__":
-    print(analyze_gpu_stats(parse_nvidia_smi()))
-    print(get_gpu_details())
+# if __name__ == "__main__":
+#     print(analyze_gpu_stats(parse_nvidia_smi()))
+#     print(get_gpu_details())
