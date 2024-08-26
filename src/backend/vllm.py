@@ -108,9 +108,9 @@ class VLLM_MOE(TemplateLM):
             )
 
         assert "cuda" in device or device is None, "vLLM only supports CUDA"
-        assert (
-            max_length is None or max_model_len is None
-        ), "Either max_length or max_model_len may be provided, but not both"
+        # assert (
+        #     max_length is None or max_model_len is None
+        # ), "Either max_length or max_model_len may be provided, but not both"
 
         self._max_length = max_model_len if max_model_len is not None else max_length
         self.tensor_parallel_size = torch.cuda.device_count()
@@ -191,10 +191,20 @@ class VLLM_MOE(TemplateLM):
             model_size_param = 132e9
             self.linear_count = 3
             self.element_wise_mul = 1
-        elif "Qwen" in pretrained:
+        elif "Qwen1.5" in pretrained:
             model_size_param = 14.3e9
             self.linear_count = 3
             self.element_wise_mul = 1
+        elif "Qwen2" in pretrained:
+            model_size_param = 57.4e9
+            self.linear_count = 3
+            self.element_wise_mul = 1
+        elif "Llama" in pretrained:
+            model_size_param = 8.03e9
+            self.element_wise_mul = 1
+            self.linear_count = 3
+        else:
+            raise ValueError("Unknown model")
         #End
 
         self.n_layers = model_config.get_num_layers(parallel_config)
@@ -236,19 +246,23 @@ class VLLM_MOE(TemplateLM):
         
         if "Qwen" in pretrained:
             self.d_ff = hf_config.moe_intermediate_size
-            self.n_experts_for_ffn = 4 + n_experts_per_tok
+            self.n_experts_for_ffn = n_experts_per_tok * 2
         else:
             self.n_experts_for_ffn = n_experts_per_tok
 
-        ffn_params = self.n_layers * self.d_ff * self.linear_count * self.d_model
+        self.ffn_params = self.n_layers * self.d_ff * self.linear_count * self.d_model
 
-        shared_params = model_size_param - num_experts * ffn_params
+        shared_params = model_size_param - num_experts * self.ffn_params
 
-        self.model_size = shared_params + n_experts_per_tok * ffn_params
+        self.model_size = shared_params + self.n_experts_for_ffn * self.ffn_params
 
         self.per_token_kv_size = 2 * self.n_layers * self.d_head * self.n_kv_heads * self.precision_bytes
 
         self.n_vocab = hf_config.vocab_size
+
+        self.total_experts = num_experts
+
+        self.used_experts = n_experts_per_tok
 
         ##################################### FINISH GETTING MODEL INFO #####################################
 
@@ -375,86 +389,85 @@ class VLLM_MOE(TemplateLM):
                 use_tqdm=True if self.batch_size == "auto" else False,
             )
             end = time.time()
-        b_size = len(requests)
+        input_length = sum([len(x) for x in requests])
         output_length = sum([len(x.outputs[0].token_ids) for x in outputs])
-        e2e_time = (end - start) / b_size
         token_per_sec = output_length / decoding_time
+        tok_per_sec_with_prefill = (output_length + input_length) / (end - start)
+        kvs = []
+        avg_ctx = []
+        if "8x7" in self.pretrained:
+            print("yeah")
+            if max_tokens==256:
+                if self.batch_size == 32:
+                    activated_experts = 7.89
+            elif max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 6.44
+                elif self.batch_size == 20:
+                    activated_experts = 6.78
+            # activated_experts = 7.08
+            s_attn = 0.000134
+            s_expert = 0.00034
+        elif "8x22" in self.pretrained:
+            # activated_experts = 7.33
+            if max_tokens==256:
+                if self.batch_size == 20:
+                    activated_experts = 7.68
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 5.68
+                elif self.batch_size == 5:
+                    activated_experts = 5.34
+            s_attn = 0.0003
+            s_expert = 0.0006
+        elif "dbrx" in self.pretrained:
+            # activated_experts = 13.49
+            if max_tokens==256:
+                if self.batch_size == 8:
+                    activated_experts = 12.27
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 12.2
+                elif self.batch_size == 5:
+                    activated_experts = 10.51
+            s_attn = 0.0003
+            s_expert = 0.0004
+        elif "Qwen" in self.pretrained:
+            # activated_experts = 33.32
+            if max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 27.25
+            s_attn = 0.000034
+            s_expert = 0.000017
+        for x in outputs:
+            context_prefill_size = len(x.prompt_token_ids)
+            output_len = len(x.outputs[0].token_ids)
+            kv_size = context_prefill_size * self.per_token_kv_size + (output_len - 1) * self.per_token_kv_size / 2
+            kv_size = kv_size / 1e12
+            kvs.append(kv_size)
+            ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
+            avg_context_length = (context_prefill_size + output_len) / 2
+            avg_ctx.append(avg_context_length)
+        
+        val = 1 #FIXME hardcoded for bf16 (Yinsicheng)
+        kv_size = sum(kvs) / len(kvs)
+        avg_context_length = sum(avg_ctx) / len(avg_ctx)
         if self.batch_size != "auto":
-            kvs = []
-            avg_ctx = []
-
-            if "8x7" in self.pretrained:
-                print("yeah")
-                if max_tokens==256:
-                    if self.batch_size == 32:
-                        activated_experts = 7.89
-                elif max_tokens==4096:
-                    if self.batch_size == 16:
-                        activated_experts = 6.44
-                    elif self.batch_size == 20:
-                        activated_experts = 6.78
-                # activated_experts = 7.08
-                s_attn = 0.000134
-                s_expert = 0.00034
-            elif "8x22" in self.pretrained:
-                # activated_experts = 7.33
-                if max_tokens==256:
-                    if self.batch_size == 20:
-                        activated_experts = 7.68
-                elif max_tokens==4096:
-                    if self.batch_size == 8:
-                        activated_experts = 5.68
-                    elif self.batch_size == 5:
-                        activated_experts = 5.34
-                s_attn = 0.0003
-                s_expert = 0.0006
-            elif "dbrx" in self.pretrained:
-                # activated_experts = 13.49
-                if max_tokens==256:
-                    if self.batch_size == 8:
-                        activated_experts = 12.27
-                elif max_tokens==4096:
-                    if self.batch_size == 8:
-                        activated_experts = 12.2
-                    elif self.batch_size == 5:
-                        activated_experts = 10.51
-                s_attn = 0.0003
-                s_expert = 0.0004
-            elif "Qwen" in self.pretrained:
-                # activated_experts = 33.32
-                if max_tokens==4096:
-                    if self.batch_size == 16:
-                        activated_experts = 27.25
-                s_attn = 0.000034
-                s_expert = 0.000017
-
-            for x in outputs:
-                context_prefill_size = len(x.prompt_token_ids)
-                output_len = len(x.outputs[0].token_ids)
-
-                kv_size = context_prefill_size * self.per_token_kv_size + (output_len - 1) * self.per_token_kv_size / 2
-
-                kv_size = kv_size / 1e12
-
-                kvs.append(kv_size)
-                ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
-                avg_context_length = (context_prefill_size + output_len) / 2
-                avg_ctx.append(avg_context_length)
-            
-            val = 1 #FIXME hardcoded for bf16 (Yinsicheng)
-
-            kv_size = sum(kvs) / len(kvs)
-            avg_context_length = sum(avg_ctx) / len(avg_ctx)
-            smfu = (token_per_sec * self.n_layers * 2 * ( self.d_ff * self.d_model * 3 * 2 + 
+            e2e_time = (end - start) / self.batch_size
+            smfu = (tok_per_sec_with_prefill * self.n_layers * 2 * (self.used_experts * self.linear_count * self.d_ff * self.d_model + 
                                                         avg_context_length * avg_context_length * self.d_model + 
                                                         4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self.tensor_parallel_size) * val
             smbu = ((self.n_layers*(activated_experts * s_expert * val + s_attn * val) + 
                     kv_size)/(self.batch_size / token_per_sec) ) / ( 1 * self.tensor_parallel_size) * val
-
             print(f"avg_mfu: {smfu}, avg_mbu: {smbu}")
         else:
-            smfu = 0
+            # smfu = (token_per_sec * self.n_layers * 2 * (self.used_experts * self.linear_count * self.d_ff * self.d_model + 
+            #                                             avg_context_length * avg_context_length * self.d_model + 
+            #                                             4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self.tensor_parallel_size) * val
+            flops = 2 * self.model_size + ((self.linear_count) * self.n_layers * avg_context_length * self.d_model) + 4 * self.d_model + 2 * self.d_model * self.n_vocab
+            smfu = flops * tok_per_sec_with_prefill / (311 * 1000000000000 * self.tensor_parallel_size) * val
             smbu = 0
+            e2e_time = 0
         return outputs, e2e_time, 0, token_per_sec, smfu, smbu
 
     def loglikelihood_rolling(
@@ -780,9 +793,9 @@ class VLLM_FIX(TemplateLM):
             )
 
         assert "cuda" in device or device is None, "vLLM only supports CUDA"
-        assert (
-            max_length is None or max_model_len is None
-        ), "Either max_length or max_model_len may be provided, but not both"
+        # assert (
+        #     max_length is None or max_model_len is None
+        # ), "Either max_length or max_model_len may be provided, but not both"
 
         self._max_length = max_model_len if max_model_len is not None else max_length
         self.tensor_parallel_size = torch.cuda.device_count()
@@ -919,6 +932,8 @@ class VLLM_FIX(TemplateLM):
 
         self.n_vocab = hf_config.vocab_size
 
+        self.total_experts = num_experts
+
         ##################################### FINISH GETTING MODEL INFO #####################################
 
         if lora_local_path is not None:
@@ -1048,81 +1063,78 @@ class VLLM_FIX(TemplateLM):
         output_length = sum([len(x.outputs[0].token_ids) for x in outputs])
         e2e_time = (end - start) / b_size
         token_per_sec = output_length / decoding_time
-        if self.batch_size != "auto":
-            kvs = []
-            avg_ctx = []
-
-            if "8x7" in self.pretrained:
-                print("yeah")
-                if max_tokens==256:
-                    if self.batch_size == 32:
-                        activated_experts = 7.89
-                elif max_tokens==4096:
-                    if self.batch_size == 16:
-                        activated_experts = 6.44
-                    elif self.batch_size == 20:
-                        activated_experts = 6.78
-                # activated_experts = 7.08
-                s_attn = 0.000134
-                s_expert = 0.00034
-            elif "8x22" in self.pretrained:
-                # activated_experts = 7.33
-                if max_tokens==256:
-                    if self.batch_size == 20:
-                        activated_experts = 7.68
-                elif max_tokens==4096:
-                    if self.batch_size == 8:
-                        activated_experts = 5.68
-                    elif self.batch_size == 5:
-                        activated_experts = 5.34
-                s_attn = 0.0003
-                s_expert = 0.0006
-            elif "dbrx" in self.pretrained:
-                # activated_experts = 13.49
-                if max_tokens==256:
-                    if self.batch_size == 8:
-                        activated_experts = 12.27
-                elif max_tokens==4096:
-                    if self.batch_size == 8:
-                        activated_experts = 12.2
-                    elif self.batch_size == 5:
-                        activated_experts = 10.51
-                s_attn = 0.0003
-                s_expert = 0.0004
-            elif "Qwen" in self.pretrained:
-                # activated_experts = 33.32
-                if max_tokens==4096:
-                    if self.batch_size == 16:
-                        activated_experts = 27.25
-                s_attn = 0.000034
-                s_expert = 0.000017
-
-            for x in outputs:
-                context_prefill_size = len(x.prompt_token_ids)
-                output_len = len(x.outputs[0].token_ids)
-
-                kv_size = context_prefill_size * self.per_token_kv_size + (output_len - 1) * self.per_token_kv_size / 2
-
-                kv_size = kv_size / 1e12
-
-                kvs.append(kv_size)
-                ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
-                avg_context_length = (context_prefill_size + output_len) / 2
-                avg_ctx.append(avg_context_length)
+        kvs = []
+        avg_ctx = []
+        if "8x7" in self.pretrained:
+            print("yeah")
+            if max_tokens==256:
+                if self.batch_size == 32:
+                    activated_experts = 7.89
+            elif max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 6.44
+                elif self.batch_size == 20:
+                    activated_experts = 6.78
+            # activated_experts = 7.08
+            s_attn = 0.000134
+            s_expert = 0.00034
+        elif "8x22" in self.pretrained:
+            # activated_experts = 7.33
+            if max_tokens==256:
+                if self.batch_size == 20:
+                    activated_experts = 7.68
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 5.68
+                elif self.batch_size == 5:
+                    activated_experts = 5.34
+            s_attn = 0.0003
+            s_expert = 0.0006
+        elif "dbrx" in self.pretrained:
+            # activated_experts = 13.49
+            if max_tokens==256:
+                if self.batch_size == 8:
+                    activated_experts = 12.27
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 12.2
+                elif self.batch_size == 5:
+                    activated_experts = 10.51
+            s_attn = 0.0003
+            s_expert = 0.0004
+        elif "Qwen" in self.pretrained:
+            # activated_experts = 33.32
+            if max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 27.25
+            s_attn = 0.000034
+            s_expert = 0.000017
+        for x in outputs:
+            context_prefill_size = len(x.prompt_token_ids)
+            output_len = len(x.outputs[0].token_ids)
+            kv_size = context_prefill_size * self.per_token_kv_size + (output_len - 1) * self.per_token_kv_size / 2
+            kv_size = kv_size / 1e12
+            kvs.append(kv_size)
+            ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
+            avg_context_length = (context_prefill_size + output_len) / 2
+            avg_ctx.append(avg_context_length)
             
             val = 1 #FIXME hardcoded for bf16 (Yinsicheng)
 
             kv_size = sum(kvs) / len(kvs)
             avg_context_length = sum(avg_ctx) / len(avg_ctx)
+        if self.batch_size != "auto":
             smfu = (token_per_sec * self.n_layers * 2 * ( self.d_ff * self.d_model * 3 * 2 + 
-                                                        avg_context_length * avg_context_length * self.d_model + 
+                                                        self.d_model * self.total_experts + 
                                                         4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self.tensor_parallel_size) * val
             smbu = ((self.n_layers*(activated_experts * s_expert * val + s_attn * val) + 
                     kv_size)/(self.batch_size / token_per_sec) ) / ( 1 * self.tensor_parallel_size) * val
 
             print(f"avg_mfu: {smfu}, avg_mbu: {smbu}")
         else:
-            smfu = 0
+            smfu = (token_per_sec * self.n_layers * 2 * ( self.d_ff * self.d_model * 3 * 2 + 
+                                                        self.d_model * self.total_experts + 
+                                                        4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self.tensor_parallel_size) * val
             smbu = 0
         return outputs, e2e_time, 0, token_per_sec, smfu, smbu
 
