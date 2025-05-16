@@ -183,9 +183,23 @@ class ArenaHard(ConfigurableTask):
         kwargs["endpoint_dict"] = endpoint_info
         # kwargs["output_file"] = output_files["custom_model"]
         kwargs["regex_pattern"] = pattern
-    
-        scores = judgment(**kwargs)
-        return {"score": scores}           
+        
+        import pickle
+        
+        def append_dict_pickle(data, file_name="judgment_kwargs.pkl"):
+            if os.path.exists(file_name):
+                with open(file_name, "rb") as f:
+                    existing_data = pickle.load(f)
+            else:
+                existing_data = []
+            existing_data.append(data)
+            with open(file_name, "wb") as f:
+                pickle.dump(existing_data, f)
+        
+        append_dict_pickle(kwargs)
+        # scores = judgment(**kwargs)
+        # return {"score": scores}
+        return {"score": -1}        
 
     def aggregation(self):
         """
@@ -208,8 +222,11 @@ class ArenaHard(ConfigurableTask):
             stats["score"] = get_win_rate_column(stats, "score", "gpt-4-0314").tolist()
             
             return stats["score"][1]
+        
+        ConfigurableTask.download = original_download
             
-        return {k: get_win_rate for k in ["score"]}
+        # return {k: get_win_rate for k in ["score"]}
+        return {k: mean for k in ["score"]}
 
     def higher_is_better(self):
         """

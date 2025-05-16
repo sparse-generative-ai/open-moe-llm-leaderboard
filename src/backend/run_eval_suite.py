@@ -65,6 +65,7 @@ from src.backend.tasks.selfcheckgpt.task import SelfCheckGPT
 
 from src.backend.huggingface_generate_until import HFLMwithChatTemplate
 from src.backend.moe_infinity import MoEHFLM
+from src.backend.vllm import VLLM_MOE
 
 def run_evaluation(
     eval_request: EvalRequest,

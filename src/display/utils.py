@@ -13,6 +13,7 @@ TS = "T/s" #Decoding throughput (tok/s)
 InFrame = "Method" #"Inference framework"
 MULTIPLE_CHOICEs = ["mmlu"]
 
+
 GPU_TEMP = 'Temp(C)'
 GPU_Power = 'Power(W)'
 GPU_Mem = 'Mem(G)'
@@ -78,6 +79,7 @@ class Tasks(Enum):
 
     # # XXX include me back at some point
     # selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
+    # selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
     mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
     gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
     # gsm8k_cot = Task("gsm8k_cot", "em", "GSM8K COT") #GSM8K COT/EM (5-shot)
@@ -121,8 +123,11 @@ for task in Tasks:
         continue
     # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
+    # if task.value.benchmark != "gsm8k_custom":
+    #     continue
     auto_eval_column_dict.append([f"{task.name}_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
+    
 
 
 # Model information
@@ -187,6 +192,7 @@ class InferenceFramework(Enum):
     # MoE_Infinity = ModelDetails("moe-infinity")
     HF_Chat = ModelDetails("hf-chat")
     VLLM = ModelDetails("vllm_moe")
+    VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     TRTLLM = ModelDetails("tensorrt_llm")
     VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     Unknown = ModelDetails("?")
@@ -210,6 +216,7 @@ class InferenceFramework(Enum):
 
 class GPUType(Enum):
     A100_sxm = ModelDetails("NVIDIA-A100-SXM4-80GB")
+    A100_sxm4 = ModelDetails("NVIDIA-A100-SMX4-80GB")
     A100_pcie = ModelDetails("NVIDIA-A100-PCIe-80GB")
     Unknown = ModelDetails("?")
 

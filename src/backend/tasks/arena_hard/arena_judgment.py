@@ -14,6 +14,7 @@ from sklearn.linear_model import LogisticRegression
 import math
 from collections import defaultdict
 from tqdm import tqdm
+from time import time
 
 from src.backend.tasks.arena_hard.arena_utils import (
     chat_completion_openai,
@@ -68,6 +69,9 @@ def judgment(**args):
     #     "games":[]
     #     }
     output = [question["question_id"]]
+    
+    if not answer:
+        answer="Sorry I do not know."
 
     for game in range(num_games):
         conv = [{"role": "system", "content": configs["system_prompt"]}]
@@ -94,13 +98,15 @@ def judgment(**args):
                     base += 1
             
             if answer:
-                prompt_args[f"answer_{base}"] = answer
+                if game == 1:
+                    prompt_args[f"answer_{base}"] = answer["choices"][0]["turns"][0]["content"]
+                else:
+                    prompt_args[f"answer_{base}"] = answer
 
             if reference:
                 for j, ref_answer in enumerate(reference):
                     for i, turn in enumerate(ref_answer["choices"][0]["turns"]):
                         prompt_args[f"ref_answer_{i+j+1}"] = turn["content"]
-            
             user_prompt = template.format(**prompt_args)
             conv.append({"role": "user", "content": user_prompt})
 
@@ -113,39 +119,39 @@ def judgment(**args):
                 configs["max_tokens"],
                 args["endpoint_dict"],
             )
-
             judgment += ("\n" + new_judgment)
-
             score, try_again = get_score(judgment, args["regex_pattern"])
-
             conv.append({"role": "assistant", "content": new_judgment})
-
             if not try_again:
                 break
-
             conv.append({"role": "user", "content": "continue your judgment and finish by outputting a final verdict label"})
-        print("Finish judgment!!!")
-        # result = {
-        #     "user_prompt": conv[1]["content"],
-        #     "judgment": judgment,
-        #     "score":score
-        # }
+            # result = {
+            #     "user_prompt": conv[1]["content"],
+            #     "judgment": judgment,
+            #     "score":score
+            # }
         output.append(score)
-        
+        output.append(judgment)
+    print("Finish judgment!!!")
     return output
 
 def get_battles_from_scores(score_list, first_game_only=False, WEIGHT=3):
     arena_hard_battles = pd.DataFrame()
 
     print("Turning score list into battles...")
-
+    i = 0
     for scores in tqdm(score_list):
-        question_id, score1, score2 = scores
+        question_id, score1, judge1 ,score2, judge2 = scores
 
         # Process game 1
         output = {"question_id": question_id,
                   "model_a": "gpt-4-0314",
                   "model_b": f"custom_model"}  # Unique identifier for model
+        output_judge = {"question_id": question_id,
+                  "model_a": "gpt-4-0314",
+                  "model_b": f"judge", 
+                  "judge1": judge1,
+                  "judge2": judge2}  # Unique identifier for model
         weight = 1
         if score1 == "A=B":
             output["winner"] = "tie"
@@ -164,6 +170,12 @@ def get_battles_from_scores(score_list, first_game_only=False, WEIGHT=3):
 
         if weight:
             arena_hard_battles = pd.concat([arena_hard_battles, pd.DataFrame([output] * weight)])
+            
+        if i == 0:
+            judge_df = pd.DataFrame([output_judge])
+            i += 1
+        if i > 0:
+            judge_df = pd.concat([judge_df, pd.DataFrame([output_judge])])
 
         if not first_game_only:
             # Process game 2
@@ -189,6 +201,7 @@ def get_battles_from_scores(score_list, first_game_only=False, WEIGHT=3):
             if weight:
                 arena_hard_battles = pd.concat([arena_hard_battles, pd.DataFrame([output] * weight)])
 
+    judge_df.to_json(f"./GPT4-judgments-{time()}.jsonl", lines=True, orient="records")
     arena_hard_battles.to_json("./arena_hard_battles.jsonl", lines=True, orient="records")
     return arena_hard_battles
 

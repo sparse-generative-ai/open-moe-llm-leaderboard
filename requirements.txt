@@ -34,3 +34,6 @@ gputil
 bitsandbytes
 openai
 scikit-learn
+vllm==0.7.3
+ray[all]
+autoawq

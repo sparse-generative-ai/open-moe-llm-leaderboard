@@ -13,7 +13,7 @@ except:
     
 MEM_BW_DICT ={
     "NVIDIA-A100-PCIe-80GB": 1935,
-    "NVIDIA-A100-SXM-80GB": 2039,
+    "NVIDIA-A100-SXM4-80GB": 2039,
     "NVIDIA-H100-PCIe-80GB": 2039,
     "NVIDIA-RTX-A5000-24GB": 768
 }
@@ -21,31 +21,31 @@ MEM_BW_DICT ={
 PEAK_FLOPS_DICT = {
     "float32":{
         "NVIDIA-A100-PCIe-80GB": 312e12,
-        "NVIDIA-A100-SXM-80GB": 312e12,
+        "NVIDIA-A100-SXM4-80GB": 312e12,
         "NVIDIA-H100-PCIe-80GB": 756e12,
         "NVIDIA-RTX-A5000-24GB": 222.2e12
     },
     "float16":{
         "NVIDIA-A100-PCIe-80GB": 624e12,
-        "NVIDIA-A100-SXM-80GB": 624e12,
+        "NVIDIA-A100-SXM4-80GB": 624e12,
         "NVIDIA-H100-PCIe-80GB": 1513e12,
         "NVIDIA-RTX-A5000-24GB": 444.4e12
     },
     "bfloat16":{
         "NVIDIA-A100-PCIe-80GB": 624e12,
-        "NVIDIA-A100-SXM-80GB": 624e12,
+        "NVIDIA-A100-SXM4-80GB": 624e12,
         "NVIDIA-H100-PCIe-80GB": 1513e12,
         "NVIDIA-RTX-A5000-24GB": 444.4e12
     },
     "8bit":{
         "NVIDIA-A100-PCIe-80GB": 1248e12,
-        "NVIDIA-A100-SXM-80GB": 1248e12,
+        "NVIDIA-A100-SXM4-80GB": 1248e12,
         "NVIDIA-H100-PCIe-80GB": 3026e12,
         "NVIDIA-RTX-A5000-24GB": 889e12
     },
     "4bit": {
         "NVIDIA-A100-PCIe-80GB": 2496e12,
-        "NVIDIA-A100-SXM-80GB": 2496e12,
+        "NVIDIA-A100-SXM4-80GB": 2496e12,
         "NVIDIA-H100-PCIe-80GB": 6052e12,
         "NVIDIA-RTX-A5000-24GB": 1778e12
     }
@@ -97,7 +97,7 @@ def parse_nvidia_smi():
     # print(f"gpu_indices: {gpu_indices}")
     gpu_stats = []
 
-    gpu_info_pattern = re.compile(r'(\d+)C\s+P\d+\s+(\d+)W / \d+W\s+\|\s+(\d+)MiB / \d+MiB\s+\|\s+(\d+)%')
+    gpu_info_pattern = re.compile(r'(\d+)C\s+P\d+\s+(\d+)W\s*/\s*\d+W\s*\|\s*(\d+)MiB\s*/\s*\d+MiB\s*\|\s*(\d+)%')
     # gpu_name_pattern = re.compile(r'NVIDIA\s+([\w\s]+\d+(?:\s*GB)?)')
     gpu_name_pattern = re.compile(r'NVIDIA\s+(RTX\s+)?([A-Z0-9]+)')
 
@@ -209,3 +209,4 @@ def transfer_precision2bytes(precision):
 
 if __name__ == "__main__":
     print(analyze_gpu_stats(parse_nvidia_smi()))
+    print(get_gpu_details())

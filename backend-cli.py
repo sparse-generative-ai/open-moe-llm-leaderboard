@@ -8,6 +8,9 @@ import socket
 import random
 import threading
 from datetime import datetime
+from typing import Union, List
+import datasets
+from collections import defaultdict
 
 from src.backend.run_eval_suite import run_evaluation
 from src.backend.manage_requests import check_completed_evals, get_eval_requests, set_eval_request
@@ -29,8 +32,12 @@ import pprint
 import logging
 
 from lm_eval.filters.extraction import RegexFilter
+from lm_eval.api.task import ConfigurableTask, Task
+from lm_eval.caching.cache import load_from_cache, save_to_cache
+from lm_eval import utils
+from tqdm import tqdm
 
-
+original_docs = Task.eval_docs
 # Configure the root logger
 logging.basicConfig(
     format="%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
@@ -58,6 +65,28 @@ def tuple_input_decorator(func):
         return combined_resps
     return wrapper
 
+random.seed(0)
+def eval_docs_wrapper(self) -> Union[datasets.Dataset, List[dict]]:
+    if self.has_test_docs():
+        doc = self.test_docs()
+    elif self.has_validation_docs():
+        doc = self.validation_docs()
+    else:
+        raise ValueError(
+            f"Task dataset (path={self.DATASET_PATH}, name={self.DATASET_NAME}) must have valid or test docs!"
+        )
+    num_to_select = round(len(doc) * 0.1)
+    docs = random.sample(list(doc), num_to_select)
+    combined_dict = defaultdict(list)
+    for d in docs:
+        for key, value in d.items():
+            combined_dict[key].append(value)
+
+# Convert defaultdict to regular dict (optional, only for cleaner output if needed)
+    combined_dict = dict(combined_dict)
+    docs = datasets.Dataset.from_dict(combined_dict)
+    print(f"Selected {num_to_select} instances")
+    return docs
 
 def my_set_eval_request(api, eval_request, set_to_status, hf_repo, local_dir):
     for i in range(10):
@@ -450,14 +479,16 @@ def get_args():
     parser = argparse.ArgumentParser(description="Run the backend")
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     # debug parameters
-    parser.add_argument("--task", type=str, default="selfcheckgpt,mmlu, gsm8k", help="Task to debug")
+    parser.add_argument("--task", type=str, default="mmlu, gsm8k, arena_hard", help="Task to debug")
     parser.add_argument("--model", type=str, default="mistralai/Mixtral-8x7B-Instruct-v0.1,mistralai/Mixtral-8x7B-v0.1", help="Model to debug")
-    parser.add_argument("--precision", type=str, default="float32,float16,8bit,4bit", help="Precision to debug")
+    parser.add_argument("--precision", type=str, default="float32,bfloat16,8bit,4bit", help="Precision to debug")
     parser.add_argument("--inference-framework", type=str, default="hf-chat", help="Inference framework to debug")
     parser.add_argument("--limit", type=int, default=None, help="Limit for the number of samples")
     parser.add_argument("--gpu-type", type=str, default="NVIDIA-A100-PCIe-80GB", 
                         help="GPU type. NVIDIA-A100-PCIe-80GB; NVIDIA-RTX-A5000-24GB; NVIDIA-H100-PCIe-80GB")
     parser.add_argument("--debug_repo", action="store_true", help="Use debug repo")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
+    parser.add_argument("--sampling", action="store_true", help="Hard tasks to debug")
     parser.add_argument("--model_type", type=str, default="chat", help="Model type")
     return parser.parse_args()
 
@@ -481,6 +512,8 @@ if __name__ == "__main__":
                     task_name = task.benchmark
                     if task_name not in debug_task_name:
                         continue
+                    if args.sampling:
+                        Task.eval_docs = property(eval_docs_wrapper)               
                     # try:
                     eval_request = EvalRequest(
                         model=debug_model_name,
@@ -491,12 +524,14 @@ if __name__ == "__main__":
                         inference_framework=args.inference_framework,  # Use inference framework from arguments
                         gpu_type=args.gpu_type,
                         model_type=args.model_type,
+                        batch_size=args.batch_size,
                     )
                     curr_gpu_type = get_gpu_details()
                     if eval_request.gpu_type != curr_gpu_type:
                         print(f"GPU type mismatch: {eval_request.gpu_type} vs {curr_gpu_type}")
                         raise Exception("GPU type mismatch")
                     results = process_evaluation(task, eval_request, limit=args.limit)
+                    Task.eval_docs = property(original_docs)
                     # except Exception as e:
                     #     print(f"debug running error: {e}")
     elif local_debug and args.debug_repo:

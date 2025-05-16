@@ -74,6 +74,127 @@ class HFLMWithMeasurement(HFLM):
         self.revision = kwargs.get("revision", None)
         self.precision = kwargs.get("dtype", None)
         self.num_gpus = None
+        
+        if self.model.__class__.__name__ == "MoE":
+            model_config = self.model.model.config
+        else:
+            model_config = self.model.config
+        
+        if not self.precision:
+            if model_config.quantization_config._load_in_4bit:
+                self.precision = "4bit"
+            elif model_config.quantization_config._load_in_8bit:
+                self.precision = "8bit"
+            else:
+                raise ValueError("Unknown precision")
+            
+        # print(self.model)
+        self.linear_count = 0 
+        self.element_wise_mul = 0
+        for name, module in self.model.named_modules():
+            if ('layers.0.' in name or "transformer.blocks.0" in name) and ('attn' not in name):
+                if 'experts.0.' in name or "ffn.experts" in name:
+                    if "linear_v" in name or "gate_proj" in name:
+                        self.element_wise_mul = 1
+                    if isinstance(module, torch.nn.Linear):
+                        # print(name, module)
+                        self.linear_count += 1
+                    elif isinstance(module, DbrxExpertGLU):
+                        self.linear_count = 3
+                        self.element_wise_mul = 1
+                # elif 'experts' not in name:
+                #     if ("gate" not in name and "router" not in name) or "gate_proj" in name:
+                #         if "gate_proj" in name:
+                #             self.element_wise_mul = 1
+                #         if isinstance(module, torch.nn.Linear):
+                #             # print(name, module)
+                #             self.linear_count += 1
+                else:
+                    continue
+        print(f"self.linear_count: {self.linear_count}")
+        print(f"self.element_wise_mul: {self.element_wise_mul}")
+        print(f"GPU usage: {self._detect_num_gpus_used()}")
+        self.precision_bytes = transfer_precision2bytes(self.precision)
+        
+        model_size_param = sum(p.numel() for p in self.model.parameters())
+
+        self.n_layers = model_config.num_hidden_layers if hasattr(model_config, "num_hidden_layers") else \
+            (model_config.num_layers if hasattr(model_config, "num_layers") else model_config.n_layers)
+        
+        self.d_model = model_config.hidden_size if hasattr(model_config, "hidden_size") else model_config.d_model
+        
+        ## Number of experts per token
+        if hasattr(model_config, "num_experts_per_tok"):
+            n_experts_per_tok = model_config.num_experts_per_tok
+        elif hasattr(model_config, "num_selected_experts"):
+            n_experts_per_tok = model_config.num_selected_experts
+        elif hasattr(model_config, "ffn_config"):
+            n_experts_per_tok = model_config.ffn_config.moe_top_k
+        else:
+            n_experts_per_tok = 1
+        
+        # FFN dimension
+        if hasattr(model_config, "ffn_dim"):
+            self.d_ff = model_config.ffn_dim
+        elif hasattr(model_config, "intermediate_size"):
+            self.d_ff = model_config.intermediate_size
+        elif hasattr(model_config, "d_ff"):
+            self.d_ff = model_config.d_ff
+        elif hasattr(model_config, "ff_ratio"):
+            self.d_ff = self.d_model * model_config.ff_ratio
+        elif hasattr(model_config, "ffn_config"):
+            self.d_ff = model_config.ffn_config.ffn_hidden_size
+        else:
+            raise ValueError("Unknown FFN dimension")
+        
+        ## Number of experts
+        if hasattr(model_config, "num_local_experts"):
+            num_experts = model_config.num_local_experts
+        elif hasattr(model_config, "num_experts"):
+            num_experts = model_config.num_experts
+        elif hasattr(model_config, "ffn_config"):
+            num_experts = model_config.ffn_config.moe_num_experts
+        else:
+            num_experts = 1
+        
+        ## For GQA
+        ### number of attention heads
+        if hasattr(model_config, "num_attention_heads"):
+            n_attn_heads = model_config.num_attention_heads
+        elif hasattr(model_config, "n_heads"):
+            n_attn_heads = model_config.n_heads
+        else:
+            raise ValueError("Unknown number of attention heads")
+
+        ### number of kv heads
+        if hasattr(model_config, "num_key_value_heads"):
+            n_kv_heads = model_config.num_key_value_heads
+        elif hasattr(model_config, "attn_config"):
+            n_kv_heads = model_config.attn_config.kv_n_heads
+        else:
+            raise ValueError("Unknown number of key value heads")
+        
+        ## For Qwen MoE Only
+        if "qwen" in model_config.model_type:
+            self.d_ff = model_config.moe_intermediate_size
+            self.n_experts_for_ffn = 4 + n_experts_per_tok
+        else:
+            self.n_experts_for_ffn = n_experts_per_tok
+        
+        ffn_params = self.n_layers * self.d_ff * self.linear_count * self.d_model
+        
+        shared_params = model_size_param - num_experts * ffn_params
+
+        self.model_size = shared_params + n_experts_per_tok * ffn_params
+
+        d_head = self.d_model // n_attn_heads
+        
+        self.per_token_kv_size = 2 * self.n_layers * d_head * n_kv_heads * self.precision_bytes
+        
+        peak_bw_single = get_peak_bw(get_gpu_details())
+        self.peak_bw = peak_bw_single * self._detect_num_gpus_used()
+        
+        self.n_vocab = model_config.vocab_size
 
     def _detect_num_gpus_used(self):
         if self.num_gpus is not None:
@@ -328,46 +449,6 @@ class HFLMWithMeasurement(HFLM):
             
         context_length = context.shape[1]
 
-        if self.model.__class__.__name__ == "MoE":
-            model_config = self.model.model.config
-        else:
-            model_config = self.model.config
-        
-        if not self.precision:
-            if model_config.quantization_config._load_in_4bit:
-                self.precision = "4bit"
-            elif model_config.quantization_config._load_in_8bit:
-                self.precision = "8bit"
-            else:
-                raise ValueError("Unknown precision")
-            
-        # print(self.model)
-        linear_count = 0 
-        element_wise_mul = 0
-        for name, module in self.model.named_modules():
-            if ('layers.0.' in name or "transformer.blocks.0" in name) and ('attn' not in name):
-                if 'experts.0.' in name or "ffn.experts" in name:
-                    if "linear_v" in name:
-                        element_wise_mul = 1
-                    if isinstance(module, torch.nn.Linear):
-                        # print(name, module)
-                        linear_count += 1
-                    elif isinstance(module, DbrxExpertGLU):
-                        linear_count = 3
-                        element_wise_mul = 1
-                # elif 'experts' not in name:
-                #     if ("gate" not in name and "router" not in name) or "gate_proj" in name:
-                #         if "gate_proj" in name:
-                #             element_wise_mul = 1
-                #         if isinstance(module, torch.nn.Linear):
-                #             # print(name, module)
-                #             linear_count += 1
-                else:
-                    continue
-        print(f"linear_count: {linear_count}")
-        print(f"element_wise_mul: {element_wise_mul}")
-        print(f"GPU usage: {self._detect_num_gpus_used()}")
-
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]
         )
@@ -384,81 +465,81 @@ class HFLMWithMeasurement(HFLM):
         )
         end = time()
 
-        batch_size = context.shape[0]
         output_length = stop_watch.decoding_iterations
-        
-        precision_bytes = transfer_precision2bytes(self.precision)
-        
-        model_size_param = sum(p.numel() for p in self.model.parameters())
-
-        n_layers = model_config.num_hidden_layers if hasattr(model_config, "num_hidden_layers") else \
-            (model_config.num_layers if hasattr(model_config, "num_layers") else model_config.n_layers)
-        
-        d_model = model_config.hidden_size if hasattr(model_config, "hidden_size") else model_config.d_model
-        
-        if hasattr(model_config, "num_experts_per_tok"):
-            n_experts_per_tok = model_config.num_experts_per_tok
-        elif hasattr(model_config, "num_selected_experts"):
-            n_experts_per_tok = model_config.num_selected_experts
-        elif hasattr(model_config, "ffn_config"):
-            n_experts_per_tok = model_config.ffn_config.moe_top_k
-        else:
-            n_experts_per_tok = 1
-        
-        if hasattr(model_config, "ffn_dim"):
-            d_ff = model_config.ffn_dim
-        elif hasattr(model_config, "intermediate_size"):
-            d_ff = model_config.intermediate_size
-        elif hasattr(model_config, "d_ff"):
-            d_ff = model_config.d_ff
-        elif hasattr(model_config, "ff_ratio"):
-            d_ff = d_model * model_config.ff_ratio
-        elif hasattr(model_config, "ffn_config"):
-            d_ff = model_config.ffn_config.ffn_hidden_size
-        else:
-            raise ValueError("Unknown FFN dimension")
-        
-        if hasattr(model_config, "num_local_experts"):
-            num_experts = model_config.num_local_experts
-        elif hasattr(model_config, "num_experts"):
-            num_experts = model_config.num_experts
-        elif hasattr(model_config, "ffn_config"):
-            num_experts = model_config.ffn_config.moe_num_experts
-        else:
-            num_experts = 1
-            
-        ffn_params = n_layers * d_ff * linear_count * d_model
-        
-        shared_params = model_size_param - num_experts * ffn_params
-
-        model_size = shared_params + n_experts_per_tok * ffn_params
-
-        per_token_kv_size = 2 * n_layers * d_model * precision_bytes
-        
-        peak_bw_single = get_peak_bw(get_gpu_details())
-        peak_bw = peak_bw_single * self._detect_num_gpus_used()
-        
         context_prefill_size = context_length
-        kv_size = context_prefill_size * per_token_kv_size + (output_length - 1) * per_token_kv_size / 2
+        kv_size = context_prefill_size * self.per_token_kv_size + (output_length - 1) * self.per_token_kv_size / 2
         
-        kv_size = kv_size / 1e9
-        
-        n_vocab = model_config.vocab_size
+        kv_size = kv_size / 1e12
+        avg_context_length = (context_length + output_length) / 2
 
-        end_to_end_time = (end - start) / batch_size
-        prefilling_time = stop_watch.prefilling_time / batch_size
-        decoding_time = stop_watch.decoding_time / batch_size
+        end_to_end_time = (end - start) / self.batch_size
+        prefilling_time = stop_watch.prefilling_time / self.batch_size
+        decoding_time = stop_watch.decoding_time / self.batch_size
         token_per_sec = output_length / decoding_time
-        achieve_mem_bw = (model_size * precision_bytes / 1e9 + kv_size) * token_per_sec
         
-        avg_context_length = context_length + (output_length - 1) / 2
-        flops_per_token = 2 * model_size + ((linear_count + element_wise_mul) * n_layers * avg_context_length * d_model) + 4 * d_model + 2 * d_model * n_vocab
         peak_flops_single = get_peak_flops(get_gpu_details(), self.precision)
         peak_flops = peak_flops_single * self._detect_num_gpus_used()
         
+        # print(self.batch_size)
+        # print(max_tokens)
+        if "8x7" in self.pretrained:
+            print("yeah")
+            if max_tokens==256:
+                if self.batch_size == 32:
+                    activated_experts = 7.89
+            elif max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 6.44
+                elif self.batch_size == 20:
+                    activated_experts = 6.78
+            # activated_experts = 7.08
+            s_attn = 0.000134
+            s_expert = 0.00034
+        elif "8x22" in self.pretrained:
+            # activated_experts = 7.33
+            if max_tokens==256:
+                if self.batch_size == 20:
+                    activated_experts = 7.68
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 5.68
+                elif self.batch_size == 5:
+                    activated_experts = 5.34
+            s_attn = 0.0003
+            s_expert = 0.0006
+        elif "dbrx" in self.pretrained:
+            # activated_experts = 13.49
+            if max_tokens==256:
+                if self.batch_size == 8:
+                    activated_experts = 12.27
+            elif max_tokens==4096:
+                if self.batch_size == 8:
+                    activated_experts = 12.2
+                elif self.batch_size == 5:
+                    activated_experts = 10.51
+            s_attn = 0.0003
+            s_expert = 0.0004
+        elif "Qwen" in self.pretrained:
+            # activated_experts = 33.32
+            if max_tokens==4096:
+                if self.batch_size == 16:
+                    activated_experts = 27.25
+            s_attn = 0.000034
+            s_expert = 0.000017
+        
+        if "8bit" in self.precision:
+            val = 0.5
+        elif "4bit" in self.precision:
+            val = 0.25
+        else:
+            val = 1
+        
         ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
-        mfu = token_per_sec * flops_per_token / peak_flops
-        mbu = achieve_mem_bw / peak_bw
+        mfu = (token_per_sec * self.n_layers * 2 * ( self.d_ff * self.d_model * 3 * 2 + 
+                                                    avg_context_length * avg_context_length * self.d_model + 
+                                                    4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self._detect_num_gpus_used()) * val
+        mbu = ((self.n_layers*(activated_experts * s_expert * val + s_attn * val) + 
+                kv_size)/(self.batch_size / token_per_sec) ) / ( 1 * self._detect_num_gpus_used()) * val
         
         print(f"mfu: {mfu}, mbu: {mbu}")
         

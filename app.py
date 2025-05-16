@@ -46,7 +46,7 @@ from src.envs import API, EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, H4_TOKEN, IS_PU
     QUEUE_REPO, REPO_ID, RESULTS_REPO, DEBUG_QUEUE_REPO, DEBUG_RESULTS_REPO
 from src.populate import get_evaluation_queue_df, get_leaderboard_df
 from src.submission.submit import add_new_eval
-from src.utils import get_dataset_summary_table
+from pytz import utc
 
 def get_args():
     import argparse
