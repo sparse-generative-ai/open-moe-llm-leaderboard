@@ -1,7 +1,9 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import yaml
-import sys
+import plotly.graph_objects as go
+import os
+import tempfile
+import shutil
+import time
 
 def normalize(val, vmin, vmax, baseline=20):
     return baseline + (val - vmin) / (vmax - vmin) * (100 - baseline)
@@ -16,63 +18,92 @@ def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
-def plot_radar(config):
+def plot_interactive_radar(config):
     axis_labels = config['axis_labels']
+    axis_keys = config['axis_keys']
     model_name = config['model_name']
     baseline = config.get('baseline', 20)
     ticks = config['ticks']
     data = config['data']
-    color_map = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
-    t_key = 'TPOT' if 'Performance' in axis_labels[0] else 'Throughput'
+    perf_key, cost_key, acc_key = axis_keys
 
-    t_vals = [v[t_key] for v in data.values()]
-    c_vals = [v['Cost'] for v in data.values()]
-    a_vals = [v['Accuracy'] for v in data.values()]
-    
-    t_min, t_max = min(t_vals), max(t_vals)
-    c_max = ticks[-2]
-    a_min, a_max = min(a_vals), 1.0
+    # Extract and normalize values
+    perf_vals = [v[perf_key] for v in data.values()]
+    cost_vals = [v[cost_key] for v in data.values()]
+    acc_vals = [v[acc_key] for v in data.values()]
 
-    angles = np.linspace(np.pi / 6, 2 * np.pi + np.pi / 6, len(axis_labels), endpoint=False).tolist()
-    angles += angles[:1]
+    perf_min, perf_max = min(perf_vals), max(perf_vals)
+    cost_max = ticks[-2]
+    acc_min, acc_max = min(acc_vals), 1.0
 
-    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
-    ax.set_ylim(0, 100)
-    ax.set_title(model_name, fontsize=16, pad=20)
+    categories = axis_labels + [axis_labels[0]]
+    fig = go.Figure()
 
-    for t in np.linspace(baseline, 100, 5):
-        ax.plot(np.linspace(0, 2 * np.pi, 500), [t]*500, color="gray", lw=0.3, linestyle='dotted')
-    for angle in angles[:-1]:
-        ax.plot([angle, angle], [0, 100], color='gray', lw=0.3)
-
-    for i, (system, values) in enumerate(data.items()):
-        val1 = values[t_key]
-        val2 = values['Cost']
-        val3 = values['Accuracy']
-
+    for system, values in data.items():
+        raw_vals = [values[perf_key], values[cost_key], values[acc_key]]
         norm_vals = [
-            normalize_reversed(val1, t_min, t_max, baseline) if t_key == 'TPOT' else normalize(val1, t_min, t_max, baseline),
-            normalize_cost(val2, c_max, baseline),
-            normalize(val3, a_min, a_max, baseline)
+            normalize_reversed(values[perf_key], perf_min, perf_max, baseline),
+            normalize_cost(values[cost_key], cost_max, baseline),
+            normalize(values[acc_key], acc_min, acc_max, baseline)
         ]
-        norm_vals += norm_vals[:1]
+        norm_vals += [norm_vals[0]]
+        hovertext = [
+            f"{axis_labels[0]}: {raw_vals[0]}",
+            f"{axis_labels[1]}: {raw_vals[1]}",
+            f"{axis_labels[2]}: {raw_vals[2]}",
+            f"{axis_labels[0]}: {raw_vals[0]}"
+        ]
+        fig.add_trace(go.Scatterpolar(
+            r=norm_vals,
+            theta=categories,
+            fill='toself',
+            name=system,
+            text=hovertext,
+            hoverinfo='text+name',
+            line=dict(width=2)
+        ))
 
-        ax.plot(angles, norm_vals, label=system, linewidth=2, color=color_map[i % len(color_map)])
-        ax.fill(angles, norm_vals, alpha=0.25, color=color_map[i % len(color_map)])
+    fig.update_layout(
+        title=model_name,
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(size=10)),
+            angularaxis=dict(
+                tickfont=dict(size=12),
+                rotation=30,  # rotate the radar chart by 30 degrees
+                direction='clockwise'
+            ),
+        ),
+        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5),
+        margin=dict(t=60, b=60, l=60, r=60),
+        height=800,
+        width=800
+    )
 
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(axis_labels, fontsize=14)
-    ax.set_yticklabels([])
-    ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.1), ncol=2, fontsize=12, frameon=False)
+    # Save static image
+    png_path = f"{model_name.replace(' ', '_')}_radar.png"
+    fig.write_image(png_path, width=1000, height=1000, scale=2)
+    print(f"PNG saved to: {png_path}")
 
-    plt.tight_layout()
-    plt.savefig(f"{model_name.replace(' ', '_')}_radar.pdf", dpi=300, bbox_inches='tight')
-    plt.show()
+    # Save HTML (safe atomic overwrite)
+    html_path = f"{model_name.replace(' ', '_')}_radar.html"
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix=".html") as tmp_file:
+        fig.write_html(tmp_file.name)
+        tmp_file.flush()
+        os.fsync(tmp_file.fileno())
+        shutil.move(tmp_file.name, html_path)
+    print(f"Interactive HTML saved to: {html_path}")
+
+    # Optional: Delay to avoid browser loading half-written file
+    time.sleep(8)
+
+    # Show in default browser
+    fig.show(config={'displayModeBar': True})
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) != 2:
-        print("Usage: python draw_radar.py path/to/config.yaml")
+        print("Usage: python interactive_radar_plot.py path/to/config.yaml")
     else:
         config = load_config(sys.argv[1])
-        plot_radar(config)
+        plot_interactive_radar(config)

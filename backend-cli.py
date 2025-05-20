@@ -144,19 +144,6 @@ def sanity_checks():
 
 
 def request_to_result_name(request: EvalRequest) -> str:
-    # Request: EvalRequest(model='meta-llama/Llama-2-13b-hf', private=False, status='FINISHED',
-    # json_filepath='./eval-queue-bk/meta-llama/Llama-2-13b-hf_eval_request_False_False_False.json',
-    # weight_type='Original', model_type='pretrained', precision='float32', base_model='', revision='main',
-    # submitted_time='2023-09-09T10:52:17Z', likes=389, params=13.016, license='?')
-    #
-    # EvalResult(eval_name='meta-llama_Llama-2-13b-hf_float32', full_model='meta-llama/Llama-2-13b-hf',
-    # org='meta-llama', model='Llama-2-13b-hf', revision='main',
-    # results={'nq_open': 33.739612188365655, 'triviaqa': 74.12505572893447},
-    # precision=<Precision.float32: ModelDetails(name='float32', symbol='')>,
-    # model_type=<ModelType.PT: ModelDetails(name='pretrained', symbol='🟢')>,
-    # weight_type=<WeightType.Original: ModelDetails(name='Original', symbol='')>,
-    # architecture='LlamaForCausalLM', license='?', likes=389, num_params=13.016, date='2023-09-09T10:52:17Z', still_on_hub=True)
-    #
     org_and_model = request.model.split("/", 1)
     if len(org_and_model) == 1:
         model = org_and_model[0]
