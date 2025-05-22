@@ -16,7 +16,6 @@ from lm_eval.utils import (
     get_rolling_token_windows,
     make_disjoint_window,
 )
-from src.backend.hflm_with_measurement import HFLMWithMeasurement
 
 try:
     import ray
@@ -28,43 +27,63 @@ try:
 except ModuleNotFoundError:
     pass
 
-from vllm.outputs import RequestOutput
+from vllm.outputs import RequestOutput, EmbeddingRequestOutput
+from vllm.inputs import TokensPrompt
 import torch
 import time
 import transformers
-
-from src.utils import get_gpu_details, get_peak_bw, transfer_precision2bytes, get_peak_flops
+import pandas as pd
+from src.utils import ModelInfoRetriever, _calculate_batch_metrics
 
 eval_logger = eval_logger
 orig_run_engine = LLM._run_engine
 
 def run_engine_wrapper(func):
-    def wrapper(self, use_tqdm, *args, **kwargs):
+    def _run_engine_with_decoding_tp(
+                self, *, use_tqdm: bool
+        ) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
+        # Initialize tqdm.
+        use_tqdm = True
         if use_tqdm:
             num_requests = self.llm_engine.get_num_unfinished_requests()
-            pbar = tqdm(total=num_requests,
-                        desc="Processed prompts",
-                        dynamic_ncols=True)
-
-        outputs: List[RequestOutput] = []
-        start = time.time()
+            pbar = tqdm(
+                total=num_requests,
+                desc="Processed prompts",
+                dynamic_ncols=True,
+                postfix=(f"est. speed input: {0:.2f} toks/s, "
+                        f"output: {0:.2f} toks/s"),
+            )
+        # Run the engine.
+        outputs: List[Union[RequestOutput, EmbeddingRequestOutput]] = []
+        total_in_toks = 0
+        total_out_toks = 0
         while self.llm_engine.has_unfinished_requests():
             step_outputs = self.llm_engine.step()
             for output in step_outputs:
                 if output.finished:
                     outputs.append(output)
+                    if isinstance(output, RequestOutput):
+                        total_out_toks += sum(
+                                    len(stp.token_ids) for stp in output.outputs)
+                        out_spd = (total_out_toks /
+                                        pbar.format_dict["elapsed"])
                     if use_tqdm:
+                        if isinstance(output, RequestOutput):
+                            # Calculate tokens only for RequestOutput
+                            assert output.prompt_token_ids is not None
+                            total_in_toks += len(output.prompt_token_ids)
+                            in_spd = total_in_toks / pbar.format_dict["elapsed"]
+                            pbar.postfix = (
+                                f"est. speed input: {in_spd:.2f} toks/s, "
+                                f"output: {out_spd:.2f} toks/s")
                         pbar.update(1)
-        end = time.time()
         if use_tqdm:
             pbar.close()
         # Sort the outputs by request ID.
         # This is necessary because some requests may be finished earlier than
         # its previous requests.
-        outputs = sorted(outputs, key=lambda x: int(x.request_id))
-        decoding_time = end - start
-        return outputs, decoding_time
-    return wrapper
+        return sorted(outputs, key=lambda x: int(x.request_id)), out_spd
+    return _run_engine_with_decoding_tp
 
 LLM._run_engine = run_engine_wrapper(orig_run_engine)
 
@@ -75,6 +94,7 @@ class VLLM_MOE(TemplateLM):
     def __init__(
         self,
         pretrained: str,
+        dataset_name: str,
         dtype: Literal["float16", "bfloat16", "float32", "auto"] = "auto",
         revision: Optional[str] = None,
         trust_remote_code: Optional[bool] = False,
@@ -96,6 +116,7 @@ class VLLM_MOE(TemplateLM):
         device: str = "cuda",
         data_parallel_size: int = 1,
         lora_local_path: str = None,
+        activation_profile: str = None,
         **kwargs,
     ):
         super().__init__()
@@ -113,7 +134,7 @@ class VLLM_MOE(TemplateLM):
         # ), "Either max_length or max_model_len may be provided, but not both"
 
         self._max_length = max_model_len if max_model_len is not None else max_length
-        self.tensor_parallel_size = torch.cuda.device_count()
+        self.tensor_parallel_size = tensor_parallel_size
         self.data_parallel_size = int(data_parallel_size)
         self.model_args = {
             "model": pretrained,
@@ -126,7 +147,7 @@ class VLLM_MOE(TemplateLM):
             "trust_remote_code": trust_remote_code,
             "tensor_parallel_size": int(self.tensor_parallel_size),
             "max_model_len": int(self._max_length) if self._max_length else None,
-            "swap_space": int(swap_space),
+            # "swap_space": int(swap_space),
             "quantization": quantization,
             "seed": int(seed),
         }
@@ -141,21 +162,21 @@ class VLLM_MOE(TemplateLM):
         )
         if self.data_parallel_size <= 1:
             self.model = LLM(**self.model_args)
-        else:
-            eval_logger.warning(
-                "You might experience occasional issues with model weight downloading when data_parallel is in use. To ensure stable performance, run with data_parallel_size=1 until the weights are downloaded and cached."
-            )
-            self.model_args["worker_use_ray"] = True
-            self.batch_size = "auto"
-            eval_logger.info("Manual batching is not compatible with data parallelism.")
+        # else:
+        #     eval_logger.warning(
+        #         "You might experience occasional issues with model weight downloading when data_parallel is in use. To ensure stable performance, run with data_parallel_size=1 until the weights are downloaded and cached."
+        #     )
+        #     self.model_args["worker_use_ray"] = True
+        #     self.batch_size = "auto"
+        #     eval_logger.info("Manual batching is not compatible with data parallelism.")
 
-            from transformers import AutoConfig
+        #     from transformers import AutoConfig
 
-            self._config = AutoConfig.from_pretrained(
-                pretrained, trust_remote_code=trust_remote_code, revision=revision
-            )
+        #     self._config = AutoConfig.from_pretrained(
+        #         pretrained, trust_remote_code=trust_remote_code, revision=revision
+        #     )
         
-        self.batch_size = "auto"
+        # self.batch_size = "auto"
         self.tokenizer = get_tokenizer(
             tokenizer if tokenizer else pretrained,
             tokenizer_mode=tokenizer_mode,
@@ -172,99 +193,37 @@ class VLLM_MOE(TemplateLM):
         self._max_gen_toks = max_gen_toks
         self.pretrained = pretrained
 
-    ##################################### GETTING MODEL INFO #####################################
-        model_config = self.model.llm_engine.model_config
-        parallel_config = self.model.llm_engine.parallel_config
-        hf_config = model_config.hf_text_config
-        self.d_model = model_config.get_hidden_size()
+        self.used_dtype = dtype if quantization is None else quantization
+        if self.used_dtype == "awq_marlin":
+            self.used_dtype = "awq"
+        # --- Use ModelInfoRetriever --- #
+        self.model_info = ModelInfoRetriever(model_name=pretrained, precision=self.used_dtype)
+        moe_info = self.model_info.get_moe_info()
+        attn_info = self.model_info.get_attention_info()
 
-        #FIXME Hardcoded, currently do not know how to get them from vLLM. (Yinsicheng)
-        if "8x7" in pretrained:
-            model_size_param = 46.7e9
-            self.element_wise_mul = 0
-            self.linear_count = 3
-        elif "8x22" in pretrained:
-            model_size_param = 141e9
-            self.element_wise_mul = 0
-            self.linear_count = 3
-        elif "dbrx" in pretrained:
-            model_size_param = 132e9
-            self.linear_count = 3
-            self.element_wise_mul = 1
-        elif "Qwen1.5" in pretrained:
-            model_size_param = 14.3e9
-            self.linear_count = 3
-            self.element_wise_mul = 1
-        elif "Qwen2" in pretrained:
-            model_size_param = 57.4e9
-            self.linear_count = 3
-            self.element_wise_mul = 1
-        elif "Llama" in pretrained:
-            model_size_param = 8.03e9
-            self.element_wise_mul = 1
-            self.linear_count = 3
+        self.precision = self.model_info.get_model_precision_bits()
+        self.d_model = self.model_info.config.hidden_size
+        self.d_ff = moe_info["ffn_dim"]
+        self.total_experts = moe_info["num_experts"]
+        self.used_experts = moe_info["experts_per_token"]
+        self.n_layers = self.model_info.config.num_hidden_layers
+        self.n_kv_heads = attn_info["num_key_value_heads"]
+        self.d_head = attn_info["head_dim"]
+        self.n_vocab = self.model_info.config.vocab_size
+        self.per_token_kv_size = 2 * self.n_layers * self.d_head * self.n_kv_heads  #GQA, MQA
+
+        assert activation_profile is not None, "Activation profile is required."
+        activation_path = f"{activation_profile}/{pretrained.split('/')[0]}_{pretrained.split('/')[1]}.csv"
+        print(f"Loading activation profile from {activation_path}")
+        activation_profile = pd.read_csv(activation_path)
+
+        if self.batch_size in activation_profile['batch_size'].values:
+            self.avg_activated_experts = activation_profile[
+                (activation_profile['dataset'] == dataset_name) & 
+                (activation_profile['batch_size'] == self.batch_size)
+            ]['average activated experts'].values[0]
         else:
-            raise ValueError("Unknown model")
-        #End
-
-        self.n_layers = model_config.get_num_layers(parallel_config)
-        self.n_kv_heads = model_config.get_num_kv_heads(parallel_config)
-        self.d_head = model_config.get_head_size()
-        self.precision_bytes = 2
-
-        ## Number of experts
-        if hasattr(hf_config, "num_local_experts"):
-            num_experts = hf_config.num_local_experts
-        elif hasattr(hf_config, "num_experts"):
-            num_experts = hf_config.num_experts
-        elif hasattr(hf_config, "ffn_config"):
-            num_experts = hf_config.ffn_config.moe_num_experts
-        else:
-            num_experts = 1
-
-        if hasattr(hf_config, "num_experts_per_tok"):
-            n_experts_per_tok = hf_config.num_experts_per_tok
-        elif hasattr(hf_config, "num_selected_experts"):
-            n_experts_per_tok = hf_config.num_selected_experts
-        elif hasattr(hf_config, "ffn_config"):
-            n_experts_per_tok = hf_config.ffn_config.moe_top_k
-        else:
-            n_experts_per_tok = 1
-        
-        if hasattr(hf_config, "ffn_dim"):
-            self.d_ff = hf_config.ffn_dim
-        elif hasattr(hf_config, "intermediate_size"):
-            self.d_ff = hf_config.intermediate_size
-        elif hasattr(hf_config, "d_ff"):
-            self.d_ff = hf_config.d_ff
-        elif hasattr(hf_config, "ff_ratio"):
-            self.d_ff = self.d_model * hf_config.ff_ratio
-        elif hasattr(hf_config, "ffn_config"):
-            self.d_ff = hf_config.ffn_config.ffn_hidden_size
-        else:
-            raise ValueError("Unknown FFN dimension")
-        
-        if "Qwen" in pretrained:
-            self.d_ff = hf_config.moe_intermediate_size
-            self.n_experts_for_ffn = n_experts_per_tok * 2
-        else:
-            self.n_experts_for_ffn = n_experts_per_tok
-
-        self.ffn_params = self.n_layers * self.d_ff * self.linear_count * self.d_model
-
-        shared_params = model_size_param - num_experts * self.ffn_params
-
-        self.model_size = shared_params + self.n_experts_for_ffn * self.ffn_params
-
-        self.per_token_kv_size = 2 * self.n_layers * self.d_head * self.n_kv_heads * self.precision_bytes
-
-        self.n_vocab = hf_config.vocab_size
-
-        self.total_experts = num_experts
-
-        self.used_experts = n_experts_per_tok
-
-        ##################################### FINISH GETTING MODEL INFO #####################################
+            raise ValueError(f"Batch size {self.batch_size} not found in activation profile. Please run activation profiling first.")
 
         if lora_local_path is not None:
             assert parse_version(version("vllm")) > parse_version(
@@ -358,7 +317,7 @@ class VLLM_MOE(TemplateLM):
             ):
                 llm = LLM(**model_args)
                 return llm.generate(
-                    prompt_token_ids=requests, sampling_params=sampling_params
+                    prompts=requests, sampling_params=sampling_params
                 )
 
             # dispatch requests to all self.data_parallel_size workers, in interleaved fashion
@@ -374,8 +333,8 @@ class VLLM_MOE(TemplateLM):
 
         if self.lora_request is not None:
             start = time.time()
-            outputs, decoding_time = self.model.generate(
-                prompt_token_ids=requests,
+            outputs, decoding_tp = self.model.generate(
+                prompts=requests,
                 sampling_params=sampling_params,
                 use_tqdm=True if self.batch_size == "auto" else False,
                 lora_request=self.lora_request,
@@ -383,91 +342,26 @@ class VLLM_MOE(TemplateLM):
             end = time.time()
         else:
             start = time.time()
-            outputs, decoding_time = self.model.generate(
-                prompt_token_ids=requests,
+            outputs, decoding_tp = self.model.generate(
+                prompts=requests,
                 sampling_params=sampling_params,
                 use_tqdm=True if self.batch_size == "auto" else False,
             )
             end = time.time()
-        input_length = sum([len(x) for x in requests])
-        output_length = sum([len(x.outputs[0].token_ids) for x in outputs])
-        token_per_sec = output_length / decoding_time
-        tok_per_sec_with_prefill = (output_length + input_length) / (end - start)
-        kvs = []
-        avg_ctx = []
-        if "8x7" in self.pretrained:
-            print("yeah")
-            if max_tokens==256:
-                if self.batch_size == 32:
-                    activated_experts = 7.89
-            elif max_tokens==4096:
-                if self.batch_size == 16:
-                    activated_experts = 6.44
-                elif self.batch_size == 20:
-                    activated_experts = 6.78
-            # activated_experts = 7.08
-            s_attn = 0.000134
-            s_expert = 0.00034
-        elif "8x22" in self.pretrained:
-            # activated_experts = 7.33
-            if max_tokens==256:
-                if self.batch_size == 20:
-                    activated_experts = 7.68
-            elif max_tokens==4096:
-                if self.batch_size == 8:
-                    activated_experts = 5.68
-                elif self.batch_size == 5:
-                    activated_experts = 5.34
-            s_attn = 0.0003
-            s_expert = 0.0006
-        elif "dbrx" in self.pretrained:
-            # activated_experts = 13.49
-            if max_tokens==256:
-                if self.batch_size == 8:
-                    activated_experts = 12.27
-            elif max_tokens==4096:
-                if self.batch_size == 8:
-                    activated_experts = 12.2
-                elif self.batch_size == 5:
-                    activated_experts = 10.51
-            s_attn = 0.0003
-            s_expert = 0.0004
-        elif "Qwen" in self.pretrained:
-            # activated_experts = 33.32
-            if max_tokens==4096:
-                if self.batch_size == 16:
-                    activated_experts = 27.25
-            s_attn = 0.000034
-            s_expert = 0.000017
-        for x in outputs:
-            context_prefill_size = len(x.prompt_token_ids)
-            output_len = len(x.outputs[0].token_ids)
-            kv_size = context_prefill_size * self.per_token_kv_size + (output_len - 1) * self.per_token_kv_size / 2
-            kv_size = kv_size / 1e12
-            kvs.append(kv_size)
-            ## TODO only support llama-type decoder only models and moe models of switch transformer and mixtrial
-            avg_context_length = (context_prefill_size + output_len) / 2
-            avg_ctx.append(avg_context_length)
+        e2e_time = end - start
+        res_dict = _calculate_batch_metrics(outputs=outputs, decoding_tp=decoding_tp, 
+                                                n_layers=self.n_layers, d_model=self.d_model, 
+                                                n_attn_heads=self.n_kv_heads, d_head=self.d_head, 
+                                                n_kv_heads=self.n_kv_heads, 
+                                                n_experts_per_tok=self.used_experts, d_ff=self.d_ff, 
+                                                avg_activated_experts=self.avg_activated_experts, hf_config=self.model_info.config, 
+                                                num_gpus=self.tensor_parallel_size, used_dtype=self.used_dtype, batch_size=self.batch_size,
+                                                model_name=self.pretrained, precision=self.precision)
         
-        val = 1 #FIXME hardcoded for bf16 (Yinsicheng)
-        kv_size = sum(kvs) / len(kvs)
-        avg_context_length = sum(avg_ctx) / len(avg_ctx)
-        if self.batch_size != "auto":
-            e2e_time = (end - start) / self.batch_size
-            smfu = (tok_per_sec_with_prefill * self.n_layers * 2 * (self.used_experts * self.linear_count * self.d_ff * self.d_model + 
-                                                        avg_context_length * avg_context_length * self.d_model + 
-                                                        4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self.tensor_parallel_size) * val
-            smbu = ((self.n_layers*(activated_experts * s_expert * val + s_attn * val) + 
-                    kv_size)/(self.batch_size / token_per_sec) ) / ( 1 * self.tensor_parallel_size) * val
-            print(f"avg_mfu: {smfu}, avg_mbu: {smbu}")
-        else:
-            # smfu = (token_per_sec * self.n_layers * 2 * (self.used_experts * self.linear_count * self.d_ff * self.d_model + 
-            #                                             avg_context_length * avg_context_length * self.d_model + 
-            #                                             4 * self.d_model * self.d_model)) / (311 * 1000000000000 * self.tensor_parallel_size) * val
-            flops = 2 * self.model_size + ((self.linear_count) * self.n_layers * avg_context_length * self.d_model) + 4 * self.d_model + 2 * self.d_model * self.n_vocab
-            smfu = flops * tok_per_sec_with_prefill / (311 * 1000000000000 * self.tensor_parallel_size) * val
-            smbu = 0
-            e2e_time = 0
+        token_per_sec = res_dict['decoding_throughput']
+        smfu = res_dict['smfu']
+        smbu = res_dict['smbu']
+
         return outputs, e2e_time, 0, token_per_sec, smfu, smbu
 
     def loglikelihood_rolling(
@@ -594,15 +488,20 @@ class VLLM_MOE(TemplateLM):
             # max len for inputs = max length, minus room to generate the max new tokens
             max_ctx_len = self.max_length - max_gen_toks
             context_encoding = [x[-max_ctx_len:] for x in context_encoding]
+            token_prompts = [
+                TokensPrompt(prompt_token_ids=x) for x in context_encoding
+            ]
 
             # perform batched generation
             cont, end_to_end_time, prefilling_time, token_per_sec, mfu, mbu = self._model_generate(
-                requests=context_encoding,
+                requests=token_prompts,
                 generate=True,
                 max_tokens=max_gen_toks,
                 stop=until,
                 **kwargs,
             )
+
+            print(f"end_to_end_time: {end_to_end_time}, prefilling_time: {prefilling_time}, token_per_sec: {token_per_sec}, mfu: {mfu}, mbu: {mbu}")
 
             # cache generations
             for output, context in zip(cont, context):

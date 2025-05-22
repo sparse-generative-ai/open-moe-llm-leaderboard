@@ -155,7 +155,7 @@ def request_to_result_name(request: EvalRequest) -> str:
     return res
 
 
-def process_evaluation(task: Task, eval_request: EvalRequest, limit: Optional[int] = None) -> dict:
+def process_evaluation(task: Task, eval_request: EvalRequest, limit: Optional[int] = None, upload: bool = True) -> dict:
     batch_size = 1
     batch_size = eval_request.batch_size
 
@@ -224,15 +224,16 @@ def process_evaluation(task: Task, eval_request: EvalRequest, limit: Optional[in
     with open(output_path, "w") as f:
         f.write(dumped)
 
-    my_snapshot_download(
-        repo_id=RESULTS_REPO, revision="main", local_dir=EVAL_RESULTS_PATH_BACKEND, repo_type="dataset", max_workers=60
-    )
-    API.upload_file(
-        path_or_fileobj=output_path,
-        path_in_repo=f"{eval_request.model}/results_{datetime.now()}.json",
-        repo_id=RESULTS_REPO,
-        repo_type="dataset",
-    )
+    if upload:
+        my_snapshot_download(
+            repo_id=RESULTS_REPO, revision="main", local_dir=EVAL_RESULTS_PATH_BACKEND, repo_type="dataset", max_workers=60
+        )
+        API.upload_file(
+            path_or_fileobj=output_path,
+            path_in_repo=f"{eval_request.model}/results_{datetime.now()}.json",
+            repo_id=RESULTS_REPO,
+            repo_type="dataset",
+        )
     
     RegexFilter.apply = original_apply
     return results
@@ -477,6 +478,8 @@ def get_args():
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("--sampling", action="store_true", help="Hard tasks to debug")
     parser.add_argument("--model_type", type=str, default="chat", help="Model type")
+    parser.add_argument("--activation_profile_path", type=str, required=True, help="Activation profile path")
+    parser.add_argument("--tensor_parallel_size", type=int, default=1, help="Tensor parallel size")
     return parser.parse_args()
 
 
@@ -512,12 +515,15 @@ if __name__ == "__main__":
                         gpu_type=args.gpu_type,
                         model_type=args.model_type,
                         batch_size=args.batch_size,
+                        dataset_name=task_name,
+                        activation_profile=args.activation_profile_path,
+                        tensor_parallel_size=args.tensor_parallel_size
                     )
                     curr_gpu_type = get_gpu_details()
                     if eval_request.gpu_type != curr_gpu_type:
                         print(f"GPU type mismatch: {eval_request.gpu_type} vs {curr_gpu_type}")
                         raise Exception("GPU type mismatch")
-                    results = process_evaluation(task, eval_request, limit=args.limit)
+                    results = process_evaluation(task, eval_request, limit=args.limit, upload=False)
                     Task.eval_docs = property(original_docs)
                     # except Exception as e:
                     #     print(f"debug running error: {e}")

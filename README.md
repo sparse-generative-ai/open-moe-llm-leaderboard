@@ -107,13 +107,15 @@ MATH_4000,16,7.7469783834586465
 ```
 ## Running Evaluation
 ```
-OMP_NUM_THREADS=1 CUDA_VISIBLE_DEVICES=0,1,2,3 python backend-cli.py  --debug \
+VLLM_WORKER_MULTIPROC_METHOD=spawn CUDA_VISIBLE_DEVICES=0,1,2,3 python backend-cli.py  --debug \
                                                 --task arena_hard \
                                                 --model mistralai/Mixtral-8x7B-Instruct-v0.1 \
                                                 --precision bfloat16 \
-                                                --inference-framework vllm_moe\
+                                                --inference-framework vllm_moe \
                                                 --gpu-type NVIDIA-RTX-A6000-48GB \
-                                                --batch_size 8
+                                                --batch_size 16 \
+                                                --activation_profile_path /path/to/activation_profiling_results \
+                                                --tensor_parallel_size 4
 ```
 
 We current only stably support vLLM, Huggingface Transformers, MoE-Infinity and Accelerator. We will add more systems like SGLang and MoE-Gen. Stay tuned!

@@ -194,7 +194,6 @@ class InferenceFramework(Enum):
     VLLM = ModelDetails("vllm_moe")
     VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     TRTLLM = ModelDetails("tensorrt_llm")
-    VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     Unknown = ModelDetails("?")
 
     def to_str(self):
