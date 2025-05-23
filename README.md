@@ -49,8 +49,26 @@ pip install -r requirements.txt
 pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ moe-infinity
 pip install pydantic==2.6.4 # Resolves a dependency conflict with moe-infinity
 python -m spacy download en # Required for selfcheckgpt
+
+# Install SGLang
+git clone -b v0.4.6.post4 https://github.com/sgl-project/sglang.git
+cd sglang
+pip install --upgrade pip
+pip install -e "python[all]"
 ```
 
+if you encounter following conflicts:
+```bash
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+moe-infinity 0.0.1.dev20250323174701 requires numpy==1.22.4, but you have numpy 1.26.0 which is incompatible.
+moe-infinity 0.0.1.dev20250323174701 requires pyarrow==12.0.0, but you have pyarrow 20.0.0 which is incompatible.
+moe-infinity 0.0.1.dev20250323174701 requires pydantic==1.10.12, but you have pydantic 2.10.0 which is incompatible.
+moe-infinity 0.0.1.dev20250323174701 requires transformers<4.47,>=4.37.1, but you have transformers 4.51.1 which is incompatible.
+vllm 0.7.3 requires torch==2.5.1, but you have torch 2.6.0 which is incompatible.
+vllm 0.7.3 requires torchvision==0.20.1, but you have torchvision 0.21.0 which is incompatible.
+vllm 0.7.3 requires xgrammar==0.1.11; platform_machine == "x86_64", but you have xgrammar 0.1.19 which is incompatible.
+```
+At present, they will not affect anything and you can ignore them.
 ## Architecture Overview
 
 The Open-MOE-LLM-Leaderboard project uses the following architecture:
@@ -103,8 +121,10 @@ python run_profiling.py --model mistralai/Mixtral-8x7B-Instruct-v0.1 --batch_siz
 The result will be in `activation_profilling_results/`
 ```csv
 dataset,batch_size,average activated experts
-MATH_4000,16,7.7469783834586465
+MATH,16,7.7469783834586465
 ```
+
+NOTE: Current vLLM Profiler only supports 0.7.3.
 ## Running Evaluation
 ```
 VLLM_WORKER_MULTIPROC_METHOD=spawn CUDA_VISIBLE_DEVICES=0,1,2,3 python backend-cli.py  --debug \

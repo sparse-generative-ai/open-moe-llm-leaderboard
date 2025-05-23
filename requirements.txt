@@ -1,4 +1,3 @@
-torch
 colorama
 APScheduler
 black
@@ -35,5 +34,7 @@ bitsandbytes
 openai
 scikit-learn
 vllm==0.7.3
+torch==2.6.0
+torchvision==0.21.0
 ray[all]
 autoawq

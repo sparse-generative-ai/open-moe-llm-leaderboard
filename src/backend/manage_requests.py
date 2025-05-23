@@ -38,7 +38,7 @@ class EvalRequest:
         model_args += ",trust_remote_code=True,device_map=auto,tensor_parallel_size={tp}".format(tp=self.tensor_parallel_size)
         if self.precision in ["float16", "float32", "bfloat16"]:
             model_args += f",dtype={self.precision}"
-        if self.inference_framework != "vllm_moe":
+        if self.inference_framework not in ["vllm_moe", "sglang"]:
             # Quantized models need some added config, the install of bits and bytes, etc
             # elif self.precision == "8bit":
             #    model_args += ",load_in_8bit=True"

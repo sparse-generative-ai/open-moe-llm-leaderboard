@@ -467,7 +467,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Run the backend")
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     # debug parameters
-    parser.add_argument("--task", type=str, default="mmlu, gsm8k, arena_hard", help="Task to debug")
+    parser.add_argument("--task", type=str, default="mmlu, gsm8k, arena_hard, MATH", help="Task to debug")
     parser.add_argument("--model", type=str, default="mistralai/Mixtral-8x7B-Instruct-v0.1,mistralai/Mixtral-8x7B-v0.1", help="Model to debug")
     parser.add_argument("--precision", type=str, default="float32,bfloat16,8bit,4bit", help="Precision to debug")
     parser.add_argument("--inference-framework", type=str, default="hf-chat", help="Inference framework to debug")

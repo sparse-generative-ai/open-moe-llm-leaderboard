@@ -125,3 +125,4 @@ class MoEHFLM(HFLMWithMeasurement):
         self.tokenizer.padding_side = old_padding_side
 
         return encoding["input_ids"], encoding["attention_mask"]
+    

@@ -215,12 +215,12 @@ class VLLM_MOE(TemplateLM):
         assert activation_profile is not None, "Activation profile is required."
         activation_path = f"{activation_profile}/{pretrained.split('/')[0]}_{pretrained.split('/')[1]}.csv"
         print(f"Loading activation profile from {activation_path}")
-        activation_profile = pd.read_csv(activation_path)
+        activation_profile_df = pd.read_csv(activation_path)
 
-        if self.batch_size in activation_profile['batch_size'].values:
-            self.avg_activated_experts = activation_profile[
-                (activation_profile['dataset'] == dataset_name) & 
-                (activation_profile['batch_size'] == self.batch_size)
+        if self.batch_size in activation_profile_df['batch_size'].values:
+            self.avg_activated_experts = activation_profile_df[
+                (activation_profile_df['dataset'] == dataset_name) & 
+                (activation_profile_df['batch_size'] == self.batch_size)
             ]['average activated experts'].values[0]
         else:
             raise ValueError(f"Batch size {self.batch_size} not found in activation profile. Please run activation profiling first.")
@@ -361,8 +361,9 @@ class VLLM_MOE(TemplateLM):
         token_per_sec = res_dict['decoding_throughput']
         smfu = res_dict['smfu']
         smbu = res_dict['smbu']
+        ttft = res_dict['ttft']
 
-        return outputs, e2e_time, 0, token_per_sec, smfu, smbu
+        return outputs, e2e_time, ttft, token_per_sec, smfu, smbu
 
     def loglikelihood_rolling(
         self, requests: List[Instance], disable_tqdm: bool = False
