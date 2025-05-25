@@ -57,16 +57,13 @@ pip install --upgrade pip
 pip install -e "python[all]"
 ```
 
-if you encounter following conflicts:
+if you encounter similar conflicts:
 ```bash
 ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
 moe-infinity 0.0.1.dev20250323174701 requires numpy==1.22.4, but you have numpy 1.26.0 which is incompatible.
 moe-infinity 0.0.1.dev20250323174701 requires pyarrow==12.0.0, but you have pyarrow 20.0.0 which is incompatible.
 moe-infinity 0.0.1.dev20250323174701 requires pydantic==1.10.12, but you have pydantic 2.10.0 which is incompatible.
 moe-infinity 0.0.1.dev20250323174701 requires transformers<4.47,>=4.37.1, but you have transformers 4.51.1 which is incompatible.
-vllm 0.7.3 requires torch==2.5.1, but you have torch 2.6.0 which is incompatible.
-vllm 0.7.3 requires torchvision==0.20.1, but you have torchvision 0.21.0 which is incompatible.
-vllm 0.7.3 requires xgrammar==0.1.11; platform_machine == "x86_64", but you have xgrammar 0.1.19 which is incompatible.
 ```
 At present, they will not affect anything and you can ignore them.
 ## Architecture Overview
@@ -82,40 +79,10 @@ In brief:
 
 # Quick Start
 ## Profiling Expert Activation
-Example usage is like in `run_profiling.py`
-```python
-from profiling.vllm_profiler.vllm_profiling import VLLMMoEProfiler
-import argparse
-
-def main():
-    """Main function to parse arguments and run the profiler."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='', help='Model name or path')
-    parser.add_argument('--batch_size', default=1, type=int, help='Batch size for inference')
-    parser.add_argument('--tensor_parallel_size', default=1, type=int, help='Number of GPUs for tensor parallelism')
-    parser.add_argument('--quant', default=None, type=str, help='Quantization type')
-    parser.add_argument('--dtype', default="bfloat16", type=str, help='Data type for computation')
-    parser.add_argument('--load_format', default="auto", type=str, help='Model loading format')
-    parser.add_argument('--gpu_memory_utilization', default=0.9, type=float, help='Target GPU memory utilization')
-    parser.add_argument('--temperature', default=0.0, type=float, help='Sampling temperature')
-    parser.add_argument('--max_new_tokens', default=50, type=int, help='Maximum new tokens to generate')
-    parser.add_argument('--output_dir', default='activation_profiling_results/', type=str, help='Output directory')
-    parser.add_argument('--trust_remote_code', action='store_true', default=False, help='Trust remote code for model loading')
-    parser.add_argument('--max_model_len', type=int, help='Maximum sequence length')
-    parser.add_argument('--num_layers', type=int, help='Override number of layers')
-    parser.add_argument('--hidden_size', type=int, help='Override hidden size')
-    
-    args = parser.parse_args()
-    
-    profiler = VLLMMoEProfiler(args)
-    profiler.run()
-
-if __name__ == "__main__":
-    main()
-```
+Script is in `record_experts.py`.
 Quickly run by:
 ```
-python run_profiling.py --model mistralai/Mixtral-8x7B-Instruct-v0.1 --batch_size 16 --tensor_parallel_size 4 --trust_remote_code
+python record_experts.py --model mistralai/Mixtral-8x7B-Instruct-v0.1 --batch_size 16 --task MATH
 ```
 
 The result will be in `activation_profilling_results/`
@@ -124,8 +91,17 @@ dataset,batch_size,average activated experts
 MATH,16,7.7469783834586465
 ```
 
-NOTE: Current vLLM Profiler only supports 0.7.3.
-## Running Evaluation
+And there will be also expert info recorded for each layer, stored in `activation_profiling_expert_count`
+
+We also provide you a tool to draw the heatmap of the activation of each expert in each layer. Quickly run:
+```bash
+python plot_drawer/expert_distribution.py --csv_file /path/to/xx_expert_counts.csv --output /path/to/dir
+```
+
+The result heatmap is like (batch size 4, MATH dataset, mixtral-8x7B):
+![expert_distribution](assets/mistralai_Mixtral-8x7B-Instruct-v0_1_expert_counts.png)
+
+To run the evaluation, if you would like to choose vLLM as the backend, you can do:
 ```
 VLLM_WORKER_MULTIPROC_METHOD=spawn CUDA_VISIBLE_DEVICES=0,1,2,3 python backend-cli.py  --debug \
                                                 --task arena_hard \
@@ -138,7 +114,7 @@ VLLM_WORKER_MULTIPROC_METHOD=spawn CUDA_VISIBLE_DEVICES=0,1,2,3 python backend-c
                                                 --tensor_parallel_size 4
 ```
 
-We current only stably support vLLM, Huggingface Transformers, MoE-Infinity and Accelerator. We will add more systems like SGLang and MoE-Gen. Stay tuned!
+We current only stably support SGLang, vLLM, Huggingface Transformers, MoE-Infinity and Accelerator. We are working on adding more systems like K-Transformers and MoE-Gen. Stay tuned!
 ## Running the Gradio Interface
 
 To launch the Gradio interface, execute:
@@ -184,7 +160,7 @@ with open(config_path, 'w') as file:
 ```
 Then draw a plot:
 ```bash
-python draw_radar.py radar_config.yaml
+python plot_drawer/draw_radar.py /path/to/radar_config.yaml
 ```
 Radar example: 
 

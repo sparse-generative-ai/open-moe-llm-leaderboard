@@ -103,7 +103,7 @@ def plot_interactive_radar(config):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) != 2:
-        print("Usage: python interactive_radar_plot.py path/to/config.yaml")
+        print("Usage: python draw_radar.py path/to/config.yaml")
     else:
         config = load_config(sys.argv[1])
         plot_interactive_radar(config)

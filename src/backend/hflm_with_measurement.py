@@ -1,22 +1,10 @@
 import copy
-import os
-from datetime import timedelta
-import sys
 from time import time
-from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Tuple
 
 import torch
 import torch.nn.functional as F
 import transformers
-from accelerate import (
-    Accelerator,
-    DistributedType,
-    InitProcessGroupKwargs,
-    find_executable_batch_size,
-)
-from packaging import version
-from peft import PeftModel
 from peft import __version__ as PEFT_VERSION
 from tqdm import tqdm
 from transformers.models.auto.modeling_auto import (
@@ -25,21 +13,14 @@ from transformers.models.auto.modeling_auto import (
 )
 from transformers import TextStreamer
 from transformers.models.dbrx.modeling_dbrx import DbrxExpertGLU
-from lm_eval import utils
 from lm_eval.api.instance import Instance
-from lm_eval.api.model import TemplateLM
-from lm_eval.api.registry import register_model
 from lm_eval.models.utils import (
     Collator,
-    clear_torch_cache,
-    get_dtype,
     pad_and_concat,
     stop_sequences_criteria,
 )
 from lm_eval.models.huggingface import HFLM
 from src.utils import ModelInfoRetriever, _calculate_batch_metrics_hflm
-from src.submission.check_validity import get_model_size
-from src.envs import API
 import pandas as pd
 
 class StopWatch(TextStreamer):
