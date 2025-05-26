@@ -91,7 +91,7 @@ dataset,batch_size,average activated experts
 MATH,16,7.7469783834586465
 ```
 
-And there will be also expert info recorded for each layer, stored in `activation_profiling_expert_count`
+And there will be expert info recorded for each layer, stored in `activation_profiling_expert_count`
 
 We also provide you a tool to draw the heatmap of the activation of each expert in each layer. Quickly run:
 ```bash
