@@ -1,0 +1,18 @@
+model_name: Qwen3-30B-A3B
+axis_labels: ['Latency (ms/token)', 'Cost (USD)', 'Exact Match Accuracy']
+axis_keys: ['latency', 'cost', 'accuracy']
+baseline: 20
+ticks: [0, 2000, 4000, 6000, 8000, 10000]
+data:
+  SGLang:
+    latency: 58
+    cost: 8920
+    accuracy: 0.911
+  K-Transformers:
+    latency: 73
+    cost: 3800
+    accuracy: 0.800
+  MoE-Infinity:
+    latency: 150
+    cost: 3800
+    accuracy: 0.911

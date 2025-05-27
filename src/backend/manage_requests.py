@@ -29,13 +29,16 @@ class EvalRequest:
     license: Optional[str] = ""
     batch_size: Optional[int] = 1
     gpu_type: Optional[str] = "NVIDIA-A100-PCIe-80GB"
+    dataset_name: Optional[str] = None
+    activation_profile: Optional[str] = None
+    tensor_parallel_size: Optional[int] = 1
 
     def get_model_args(self) -> str:
-        model_args = f"pretrained={self.model},revision={self.revision},parallelize=True"  # ,max_length=4096"
-        model_args += ",trust_remote_code=True,device_map=auto"
+        model_args = f"pretrained={self.model},revision={self.revision},parallelize=True,dataset_name={self.dataset_name},activation_profile={self.activation_profile},"  # ,max_length=4096"
+        model_args += ",trust_remote_code=True,device_map=auto,tensor_parallel_size={tp}".format(tp=self.tensor_parallel_size)
         if self.precision in ["float16", "float32", "bfloat16"]:
             model_args += f",dtype={self.precision}"
-        if self.inference_framework != "vllm_moe":
+        if self.inference_framework not in ["vllm_moe", "sglang"]:
             # Quantized models need some added config, the install of bits and bytes, etc
             # elif self.precision == "8bit":
             #    model_args += ",load_in_8bit=True"
@@ -53,7 +56,7 @@ class EvalRequest:
                 # A GPTQ model does not need dtype to be specified,
                 # it will be inferred from the config
             elif self.precision == "8bit":
-                model_args += ",kv_cache_dtype=fp8"
+                model_args += ",quantization=fp8"
         return model_args
 
 

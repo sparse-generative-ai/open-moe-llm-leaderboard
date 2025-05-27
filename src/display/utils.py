@@ -194,7 +194,7 @@ class InferenceFramework(Enum):
     VLLM = ModelDetails("vllm_moe")
     VLLM_FIX = ModelDetails("vllm_moe_fixbs")
     TRTLLM = ModelDetails("tensorrt_llm")
-    VLLM_FIX = ModelDetails("vllm_moe_fixbs")
+    SGLANG = ModelDetails("sglang")
     Unknown = ModelDetails("?")
 
     def to_str(self):
@@ -212,6 +212,8 @@ class InferenceFramework(Enum):
             return InferenceFramework.VLLM
         if inference_framework in ["vllm_moe_fixbs"]:
             return InferenceFramework.VLLM_FIX
+        if inference_framework in ["sglang"]:
+            return InferenceFramework.SGLANG
         return InferenceFramework.Unknown
 
 class GPUType(Enum):
