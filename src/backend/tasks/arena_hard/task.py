@@ -51,7 +51,7 @@ def load_questions(question_file: str):
 
 def download_wrapper(func):
     def download(self, *args, **kwargs):
-        print("Using Arena Hard, No need to download")
+        print("No need to download")
     return download
 
 original_download = ConfigurableTask.download

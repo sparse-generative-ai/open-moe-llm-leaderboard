@@ -50,6 +50,9 @@ pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/
 pip install pydantic==2.6.4 # Resolves a dependency conflict with moe-infinity
 python -m spacy download en # Required for selfcheckgpt
 
+# Install vLLM (only support up to v0.8.4)
+pip install vllm==0.8.4
+
 # Install SGLang
 git clone -b v0.4.6.post4 https://github.com/sgl-project/sglang.git
 cd sglang
@@ -81,14 +84,40 @@ In brief:
 ## Profiling Expert Activation
 Script is in `record_experts.py`.
 Quickly run by:
+```bash
+python record_experts.py --model Qwen/Qwen3-235B-A22B --batch_size 16 --task MATH
 ```
-python record_experts.py --model mistralai/Mixtral-8x7B-Instruct-v0.1 --batch_size 16 --task MATH
+
+If you would like to run recording on multi-node, please use `record_experts_multi_node.py` which is based on Deepspeed.
+Here is an example:
+```bash
+# On you master node
+deepspeed --num_gpus 8 \
+          --num_nodes 2 \
+          --node_rank 0 \
+          --master_addr <YOUR MASTER NODE IP> \
+          --master_port 29500 \
+          record_experts_multi_node.py.py \
+          --model_name Qwen/Qwen3-235B-A22B \
+          --batch_size 1 \
+          --task MATH
+
+# On another worker node
+deepspeed --num_gpus 8 \
+          --num_nodes 2 \
+          --node_rank 1 \
+          --master_addr <YOUR MASTER NODE IP> \
+          --master_port 29500 \
+          record_experts_multi_node.py \
+          --model_name Qwen/Qwen3-235B-A22B \
+          --batch_size 1 \
+          --task MATH
 ```
 
 The result will be in `activation_profilling_results/`
 ```csv
-dataset,batch_size,average activated experts
-MATH,16,7.7469783834586465
+dataset,batch_size,average_activated_experts
+MATH,16,57.74534901439277
 ```
 
 And there will be expert info recorded for each layer, stored in `activation_profiling_expert_count`
@@ -98,8 +127,8 @@ We also provide you a tool to draw the heatmap of the activation of each expert 
 python plot_drawer/expert_distribution.py --csv_file /path/to/xx_expert_counts.csv --output /path/to/dir
 ```
 
-The result heatmap is like (batch size 4, MATH dataset, mixtral-8x7B):
-![expert_distribution](assets/mistralai_Mixtral-8x7B-Instruct-v0_1_expert_counts.png)
+The result heatmap is like (batch size 16, MATH dataset, Qwen3-235B-A22B):
+![expert_distribution](assets/Qwen3-235B-A22B_dataset_MATH_bs16_expert_counts.png)
 
 To run the evaluation, if you would like to choose vLLM as the backend, you can do:
 ```
