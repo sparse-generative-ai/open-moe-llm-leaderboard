@@ -37,3 +37,5 @@ vllm==0.8.4
 ray[all]
 autoawq
 seaborn
+deepspeed
+flash_attn
