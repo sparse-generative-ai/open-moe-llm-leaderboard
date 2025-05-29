@@ -50,6 +50,8 @@ pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/
 pip install pydantic==2.6.4 # Resolves a dependency conflict with moe-infinity
 python -m spacy download en # Required for selfcheckgpt
 
+# Install vLLM (only support up to v0.8.4)
+pip install vllm==0.8.4
 # Install SGLang
 git clone -b v0.4.6.post4 https://github.com/sgl-project/sglang.git
 cd sglang

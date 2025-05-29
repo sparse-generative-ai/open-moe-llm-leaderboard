@@ -27,15 +27,14 @@ rouge_score
 bert-score
 evaluate
 spacy==3.7.4
+torch==2.6.0
 selfcheckgpt
 immutabledict
 gputil
 bitsandbytes
 openai
 scikit-learn
-vllm==0.8.4
 ray[all]
 autoawq
 seaborn
 deepspeed
-flash_attn
