@@ -38,3 +38,4 @@ ray[all]
 autoawq
 seaborn
 deepspeed
+ujson
