@@ -132,14 +132,19 @@ class MoEActivationAnalyzer:
         return avg_activated_experts
 
     def get_model_simple_name(self):
-        """Get a simplified name for the model for file naming"""
-        return self.hf_model_name.replace("/", "_").replace(".", "_")
+        norm_path = os.path.normpath(self.hf_model_name)
+        parts = norm_path.split(os.sep)
+        if len(parts) >= 2:
+            return f"{parts[-2]}/{parts[-1]}"
+        else:
+            return self.hf_model_name
 
     def write_to_csv(self, avg_activated_experts):
         """Write summary results to a CSV file"""
         csv_filename = f"activation_profiling_results/{self.get_model_simple_name()}.csv"
         
         # Check if file exists to determine if we need to write headers
+        os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
         file_exists = os.path.isfile(csv_filename)
         
         with open(csv_filename, 'a', newline='') as csvfile:
@@ -157,9 +162,8 @@ class MoEActivationAnalyzer:
 
     def write_expert_counts_to_csv(self):
         """Write detailed expert activation counts to a CSV file"""
-        os.makedirs(f"activation_profiling_results/", exist_ok=True)
-        os.makedirs(f"activation_profiling_expert_count/", exist_ok=True)
         csv_filename = f"activation_profiling_layer_count/{self.get_model_simple_name()}_dataset_{self.task}_bs{self.batch_size}_expert_counts.csv"
+        os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
         
         with open(csv_filename, 'w', newline='') as csvfile:
             # Create header with layer and expert IDs

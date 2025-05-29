@@ -220,16 +220,21 @@ class MoEActivationAnalyzer:
         return [all_input_updated[i:i + self.batch_size] for i in range(0, len(all_input_updated), self.batch_size)]
 
     def get_model_simple_name(self):
-        # (Identical to previous version)
-        return self.hf_model_name.replace("/", "_")
+        norm_path = os.path.normpath(self.hf_model_name)
+        parts = norm_path.split(os.sep)
+        if len(parts) >= 2:
+            return f"{parts[-2]}/{parts[-1]}"
+        else:
+            return self.hf_model_name
     
     def write_to_summary_csv(self, avg_activated_experts_value):
         # (Identical to previous version)
         if self.rank != 0:
             return
         summary_dir = "activation_profiling_results"
-        os.makedirs(summary_dir, exist_ok=True)
         csv_filename = os.path.join(summary_dir, f"{self.get_model_simple_name()}.csv")
+
+        os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
         
         file_exists = os.path.isfile(csv_filename)
         with open(csv_filename, 'a', newline='') as csvfile:
@@ -249,8 +254,9 @@ class MoEActivationAnalyzer:
         if self.rank != 0:
             return
         expert_count_dir = "activation_profiling_expert_count"
-        os.makedirs(expert_count_dir, exist_ok=True)
         csv_filename = os.path.join(expert_count_dir, f"{self.get_model_simple_name()}_dataset_{self.task}_bs{self.batch_size}_tp{self.world_size}_expert_counts.csv") # Added tp_size to filename
+
+        os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
         
         with open(csv_filename, 'w', newline='') as csvfile:
             fieldnames = ['layer_id'] + [f'expert_{i}' for i in range(self.n_experts)]
