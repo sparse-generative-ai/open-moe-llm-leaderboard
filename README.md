@@ -201,3 +201,16 @@ Radar example:
 ![moe-benchmark](assets/moe-benchmark.png)
 
 We look forward to your contributions and are here to help guide you through the process. Thank you for supporting the Open-MOE-LLM-Leaderboard project!
+
+## Citation
+```
+@misc{moe-cap,
+      title={MoE-CAP: Benchmarking Cost, Accuracy and Performance of Sparse Mixture-of-Experts Systems}, 
+      author={Yinsicheng Jiang and Yao Fu and Yeqi Huang and Ping Nie and Zhan Lu and Leyang Xue and Congjie He and Man-Kit Sit and Jilong Xue and Li Dong and Ziming Miao and Dayou Du and Tairan Xu and Kai Zou and Edoardo Ponti and Luo Mai},
+      year={2025},
+      eprint={2412.07067},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2412.07067}, 
+}
+```
