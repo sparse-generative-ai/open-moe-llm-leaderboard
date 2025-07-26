@@ -121,7 +121,7 @@ for task in Tasks:
     # auto_eval_column_dict.append([f"{task.name}_gpu_util", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Util}", "number", True, hidden=True)])
     if task.value.benchmark in MULTIPLE_CHOICEs:
         continue
-    # auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
     # if task.value.benchmark != "gsm8k_custom":
     #     continue
