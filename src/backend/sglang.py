@@ -17,7 +17,7 @@ from lm_eval.utils import (
     make_disjoint_window,
 )
 import pandas as pd
-from src.utils import ModelInfoRetriever, _calculate_batch_metrics_sglang
+from src.utils import ModelInfoRetriever, _calculate_batch_metrics_sglang, only_prefill_metrics
 
 
 eval_logger = logging.getLogger(__name__)
@@ -139,19 +139,18 @@ class SGLangMoE(TemplateLM):
         self.d_head = attn_info["head_dim"]
         self.n_vocab = self.model_info.config.vocab_size
         self.per_token_kv_size = 2 * self.n_layers * self.d_head * self.n_kv_heads  #GQA, MQA
+        self.dataset_name = dataset_name
+        if self.dataset_name == "gsm8k_custom":
+            self.dataset_name = "gsm8k"  # gsm8k_custom is a custom dataset, we use gsm8k as the dataset name for activation profile.
 
-        assert activation_profile is not None, "Activation profile is required."
-        activation_path = f"{activation_profile}/{pretrained.split('/')[0]}_{pretrained.split('/')[1]}.csv"
-        print(f"Loading activation profile from {activation_path}")
-        activation_profile_df = pd.read_csv(activation_path)
+        if self.dataset_name != 'mmlu':
+            assert activation_profile is not None, "Activation profile is required."
+            activation_path = f"{activation_profile}/{pretrained}/activation_results/{self.dataset_name}_expert_records.csv"
+            print(f"Loading activation profile from {activation_path}")
+            activation_profile_df = pd.read_csv(activation_path)
+            self.activation_info = activation_profile_df[activation_profile_df['dataset'] == self.dataset_name].iloc[0].tolist()
 
-        if self.batch_size in activation_profile_df['batch_size'].values:
-            self.avg_activated_experts = activation_profile_df[
-                (activation_profile_df['dataset'] == dataset_name) & 
-                (activation_profile_df['batch_size'] == self.batch_size)
-            ]['average activated experts'].values[0]
-        else:
-            raise ValueError(f"Batch size {self.batch_size} not found in activation profile. Please run activation profiling first.")
+
 
     def loglikelihood_rolling(
         self, requests: List[Instance], disable_tqdm: bool = False
@@ -301,13 +300,26 @@ class SGLangMoE(TemplateLM):
             max_ctx_len = self.max_length - max_gen_toks
             context_encoding = [x[-max_ctx_len:] for x in context_encoding]
 
+            # Get prefill latency
+            _, _, prefilling_time, _, _, _, prefill_tp, prefill_smfu, prefill_smbu = self._model_generate(
+                requests=context_encoding,
+                generate=True,
+                max_tokens=1,
+                stop=until,
+                **kwargs,
+            )
+
+            self.model.flush_cache()
+
             # perform batched generation
             # cont is a list of dic. See here https://github.com/sgl-project/sglang/blob/0a6f18f068e4095fc228e798454e8496c9749214/python/sglang/srt/entrypoints/engine.py#L111 .
-            cont, end_to_end_time, prefilling_time, decoding_tp, smfu, smbu = self._model_generate(
+            cont, end_to_end_time, _, decoding_tp, decoding_smfu, decoding_smbu, _, _, _ = self._model_generate(
                 requests=context_encoding,
                 generate=True,
                 max_tokens=max_gen_toks,
                 stop=until,
+                ttft=prefilling_time,
+                prefill_tp=prefill_tp,
                 **kwargs,
             )
 
@@ -319,7 +331,7 @@ class SGLangMoE(TemplateLM):
                         # ignore '' separator,
                         # for seq2seq case where self.tok_decode(self.eot_token_id) = ''
                         generated_text = generated_text.split(term)[0]
-                res.append((generated_text, end_to_end_time, prefilling_time, decoding_tp, smfu, smbu))
+                res.append((generated_text, end_to_end_time, prefilling_time, decoding_tp, decoding_smfu, decoding_smbu, prefill_tp, prefill_smfu, prefill_smbu))
                 self.cache_hook.add_partial(
                     "generate_until", (context, gen_kwargs), generated_text
                 )
@@ -338,6 +350,8 @@ class SGLangMoE(TemplateLM):
         return_logprob: bool = False,
         top_logprobs_num: int = 1,
         logprob_start_len: int = -1,
+        ttft: Optional[float] = None,
+        prefill_tp: Optional[float] = None,
         **kwargs,
     ):
         # check sglang sampling parameters: https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/sampling/sampling_params.py#L21  and https://docs.sglang.ai/references/sampling_params.html.
@@ -374,22 +388,40 @@ class SGLangMoE(TemplateLM):
         
         decoding_tp = output_lens / e2e_time 
         
-        res = _calculate_batch_metrics_sglang(outputs=outputs, decoding_tp=decoding_tp, 
-                                                n_layers=self.n_layers, d_model=self.d_model, 
-                                                n_attn_heads=self.n_kv_heads, d_head=self.d_head, 
-                                                n_kv_heads=self.n_kv_heads, 
-                                                n_experts_per_tok=self.used_experts, d_ff=self.d_ff, 
-                                                avg_activated_experts=self.avg_activated_experts, hf_config=self.model_info.config, 
-                                                num_gpus=self.tensor_parallel_size, used_dtype=self.used_dtype, batch_size=self.batch_size,
-                                                model_name=self.pretrained, precision=self.precision)
+        if ttft and prefill_tp:
+            decoding_tp = output_lens / (e2e_time - ttft)
+            res = _calculate_batch_metrics_sglang(outputs=outputs, decoding_tp=decoding_tp, 
+                                                    n_layers=self.n_layers, d_model=self.d_model, 
+                                                    n_attn_heads=self.n_kv_heads, d_head=self.d_head, 
+                                                    n_kv_heads=self.n_kv_heads, 
+                                                    n_experts_per_tok=self.used_experts, d_ff=self.d_ff, 
+                                                    avg_activated_experts=self.activation_info, hf_config=self.model_info.config, 
+                                                    num_gpus=self.tensor_parallel_size, used_dtype=self.used_dtype, batch_size=self.batch_size,
+                                                    model_name=self.pretrained, precision=self.precision, ttft=ttft,
+                                                    prefill_tp=prefill_tp)
+        elif self.dataset_name == 'mmlu':
+            res = only_prefill_metrics(outputs=outputs, batch_size=self.batch_size)
+        else:
+            res = _calculate_batch_metrics_sglang(outputs=outputs, decoding_tp=decoding_tp, 
+                                                    n_layers=self.n_layers, d_model=self.d_model, 
+                                                    n_attn_heads=self.n_kv_heads, d_head=self.d_head, 
+                                                    n_kv_heads=self.n_kv_heads, 
+                                                    n_experts_per_tok=self.used_experts, d_ff=self.d_ff, 
+                                                    avg_activated_experts=self.activation_info, hf_config=self.model_info.config, 
+                                                    num_gpus=self.tensor_parallel_size, used_dtype=self.used_dtype, batch_size=self.batch_size,
+                                                    model_name=self.pretrained, precision=self.precision)
 
-        smbu = res["smbu"]
-        smfu = res["smfu"]
+        decoding_smbu = res["decoding_smbu"]
+        decoding_smfu = res["decoding_smfu"]
+        prefill_tp = res["prefill_tp"]
+        prefill_smfu = res["prefill_smfu"]
+        prefill_smbu = res["prefill_smbu"]
         ttft = res["ttft"]
 
-        print(f"decoding throughput: {decoding_tp} token/s, smfu: {smfu}, smbu: {smbu}, ttft: {ttft}")
+        print(f"""decoding throughput: {decoding_tp} token/s, decoding smfu: {decoding_smfu}, decoding smbu: {decoding_smbu}, 
+ttft: {ttft}, prefill throughput: {prefill_tp} token/s, prefill smfu: {prefill_smfu}, prefill smbu: {prefill_smbu}""")
 
-        return outputs, e2e_time, ttft, decoding_tp, smfu, smbu
+        return outputs, e2e_time, ttft, decoding_tp, decoding_smfu, decoding_smbu, prefill_tp, prefill_smfu, prefill_smbu
 
     @property
     def eot_token_id(self):
@@ -529,7 +561,7 @@ class SGLangMoE(TemplateLM):
                 inputs.append(inp)
                 ctxlens.append(ctxlen)
 
-            outputs = self._model_generate(
+            outputs, e2e, ttft, _, _ ,_ ,_ ,_ ,_ = self._model_generate(
                 requests=inputs,
                 generate=False,
                 return_logprob=True,
@@ -544,7 +576,7 @@ class SGLangMoE(TemplateLM):
                     outputs=output,
                     ctxlen=ctxlen,
                 )
-                res.append(answer)
+                res.append((answer, e2e, ttft, 0, 0, 0, 0, 0, 0))
 
                 if cache_key is not None:
                     # special case: loglikelihood_rolling produces a number of loglikelihood requests

@@ -475,7 +475,7 @@ def get_args():
     parser.add_argument("--gpu-type", type=str, default="NVIDIA-A100-PCIe-80GB", 
                         help="GPU type. NVIDIA-A100-PCIe-80GB; NVIDIA-RTX-A5000-24GB; NVIDIA-H100-PCIe-80GB")
     parser.add_argument("--debug_repo", action="store_true", help="Use debug repo")
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
+    parser.add_argument("--batch_size", default=1, help="Batch size")
     parser.add_argument("--sampling", action="store_true", help="Hard tasks to debug")
     parser.add_argument("--model_type", type=str, default="chat", help="Model type")
     parser.add_argument("--activation_profile_path", type=str, required=True, help="Activation profile path")

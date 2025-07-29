@@ -9,7 +9,8 @@ def fields(raw_class):
 
 E2Es = "E2E(s)" #"End-to-end time (s)"
 PREs = "PRE(s)" #"Prefilling time (s)"
-TS = "T/s" #Decoding throughput (tok/s)
+TS = "Decoding T/s" #Decoding throughput (tok/s)
+PTS = "Prefill T/s" #Prefill throughput (tok/s)
 InFrame = "Method" #"Inference framework"
 MULTIPLE_CHOICEs = ["mmlu"]
 
@@ -19,16 +20,21 @@ GPU_Power = 'Power(W)'
 GPU_Mem = 'Mem(G)'
 GPU_Name = "GPU"
 GPU_Util = 'Util(%)'
-MFU = 'S-MFU(%)'
-MBU = 'S-MBU(%)'
+DSMFU = 'Decoding S-MFU(%)'
+DSMBU = 'Decoding S-MBU(%)'
+PSMFU = 'Prefill S-MFU(%)'
+PSMBU = 'Prefill S-MBU(%)'
 BATCH_SIZE = 'bs'
 PRECISION = "Precision"
 system_metrics_to_name_map = {
     "end_to_end_time": f"{E2Es}",
     "prefilling_time": f"{PREs}",
     "decoding_throughput": f"{TS}",
-    "mfu": f"{MFU}",
-    "mbu": f"{MBU}"
+    "decoding_mfu": f"{DSMFU}",
+    "decoding_mbu": f"{DSMBU}",
+    "prefill_throughput": f"{PTS}",
+    "prefill_mfu": f"{PSMFU}",
+    "prefill_mbu": f"{PSMBU}",
 }
 
 gpu_metrics_to_name_map = {
@@ -80,10 +86,10 @@ class Tasks(Enum):
     # # XXX include me back at some point
     # selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
     # selfcheck = Task("selfcheckgpt", "max-selfcheckgpt", "SelfCheckGPT")
-    mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
     gsm8k = Task("gsm8k_custom", "em", "GSM8K") #GSM8K/EM (5-shot)
     # gsm8k_cot = Task("gsm8k_cot", "em", "GSM8K COT") #GSM8K COT/EM (5-shot)
     arena_hard = Task("arena_hard", "score", "Arena Hard") #Arena Hard/Score
+    mmlu = Task("mmlu", "acc", "MMLU") #MMLU/Acc (5-shot)
 
 
 # These classes are for user facing column names,
@@ -119,14 +125,17 @@ for task in Tasks:
     # auto_eval_column_dict.append([f"{task.name}_gpu_mem", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Mem}", "number", True, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_gpu", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Name}", "str", True, hidden=True)])
     # auto_eval_column_dict.append([f"{task.name}_gpu_util", ColumnContent, ColumnContent(f"{task.value.col_name} {GPU_Util}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     if task.value.benchmark in MULTIPLE_CHOICEs:
         continue
-    auto_eval_column_dict.append([f"{task.name}_prefilling_time", ColumnContent, ColumnContent(f"{task.value.col_name} {PREs}", "number", False, hidden=True)])
     auto_eval_column_dict.append([f"{task.name}_decoding_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {TS}", "number", True, hidden=True)])
     # if task.value.benchmark != "gsm8k_custom":
     #     continue
-    auto_eval_column_dict.append([f"{task.name}_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {MBU}", "number", True, hidden=True)])
-    auto_eval_column_dict.append([f"{task.name}_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {MFU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_decoding_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {DSMBU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_decoding_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {DSMFU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_prefill_throughput", ColumnContent, ColumnContent(f"{task.value.col_name} {PTS}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_prefill_mbu", ColumnContent, ColumnContent(f"{task.value.col_name} {PSMBU}", "number", True, hidden=True)])
+    auto_eval_column_dict.append([f"{task.name}_prefill_mfu", ColumnContent, ColumnContent(f"{task.value.col_name} {PSMFU}", "number", True, hidden=True)])
     
 
 

@@ -49,13 +49,6 @@ def load_questions(question_file: str):
                 questions.append(json.loads(line))
     return questions
 
-def download_wrapper(func):
-    def download(self, *args, **kwargs):
-        print("No need to download")
-    return download
-
-original_download = ConfigurableTask.download
-ConfigurableTask.download = download_wrapper(original_download)
 # @register_task("selfcheckgpt")
 @measure_system_metrics
 class ArenaHard(ConfigurableTask):
@@ -80,6 +73,9 @@ class ArenaHard(ConfigurableTask):
         #     "until": ["<im_end>", "<im_end>"],
         #     "max_length": 1024,
         # }
+
+    def download(self, *args, **kwargs):
+        print("No need to download")
 
     def transform_data(self, data):
         transformed_data = []
@@ -222,8 +218,6 @@ class ArenaHard(ConfigurableTask):
             stats["score"] = get_win_rate_column(stats, "score", "gpt-4-0314").tolist()
             
             return stats["score"][1]
-        
-        ConfigurableTask.download = original_download
             
         # return {k: get_win_rate for k in ["score"]}
         return {k: mean for k in ["score"]}

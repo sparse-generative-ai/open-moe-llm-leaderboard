@@ -33,42 +33,42 @@ PEAK_FLOPS_DICT = {
         "NVIDIA-A100-PCIe-80GB": 624e12,
         "NVIDIA-A100-SXM4-80GB": 624e12,
         "NVIDIA-H100-PCIe-80GB": 1513e12,
-        "NVIDIA-RTX-A5000-24GB": 444.4e12,
+        "NVIDIA-RTX-A5000-24GB": 222.2e12,
         "NVIDIA-RTX-A6000-48GB": 309.7e12
     },
     "bfloat16":{
         "NVIDIA-A100-PCIe-80GB": 624e12,
         "NVIDIA-A100-SXM4-80GB": 624e12,
         "NVIDIA-H100-PCIe-80GB": 1513e12,
-        "NVIDIA-RTX-A5000-24GB": 444.4e12,
+        "NVIDIA-RTX-A5000-24GB": 222.2e12,
         "NVIDIA-RTX-A6000-48GB": 309.7e12
     },
     "int8":{
         "NVIDIA-A100-PCIe-80GB": 1248e12,
         "NVIDIA-A100-SXM4-80GB": 1248e12,
         "NVIDIA-H100-PCIe-80GB": 3026e12,
-        "NVIDIA-RTX-A5000-24GB": 889e12,
+        "NVIDIA-RTX-A5000-24GB": 222.2e12,
         "NVIDIA-RTX-A6000-48GB": 309.7e12
     },
     "fp8":{
         "NVIDIA-A100-PCIe-80GB": 1248e12,
         "NVIDIA-A100-SXM4-80GB": 1248e12,
         "NVIDIA-H100-PCIe-80GB": 3026e12,
-        "NVIDIA-RTX-A5000-24GB": 889e12,
-        "NVIDIA-RTX-A6000-48GB": 309.7e12
+        "NVIDIA-RTX-A5000-24GB": 0,
+        "NVIDIA-RTX-A6000-48GB": 0
     },
     "fp4": {
-        "NVIDIA-A100-PCIe-80GB": 2496e12,
-        "NVIDIA-A100-SXM4-80GB": 2496e12,
-        "NVIDIA-H100-PCIe-80GB": 6052e12,
-        "NVIDIA-RTX-A5000-24GB": 1778e12,
-        "NVIDIA-RTX-A6000-48GB": 309.7e12
+        "NVIDIA-A100-PCIe-80GB": 1248e12,
+        "NVIDIA-A100-SXM4-80GB": 1248e12,
+        "NVIDIA-H100-PCIe-80GB": 3026e12,
+        "NVIDIA-RTX-A5000-24GB": 0,
+        "NVIDIA-RTX-A6000-48GB": 0
     },
     "int4": {
-        "NVIDIA-A100-PCIe-80GB": 2496e12,
-        "NVIDIA-A100-SXM4-80GB": 2496e12,
-        "NVIDIA-H100-PCIe-80GB": 6052e12,
-        "NVIDIA-RTX-A5000-24GB": 1778e12,
+        "NVIDIA-A100-PCIe-80GB": 1248e12,
+        "NVIDIA-A100-SXM4-80GB": 1248e12,
+        "NVIDIA-H100-PCIe-80GB": 3026e12,
+        "NVIDIA-RTX-A5000-24GB": 222.2e12,
         "NVIDIA-RTX-A6000-48GB": 309.7e12
     }
 }
@@ -301,6 +301,10 @@ def _calculate_batch_metrics(outputs, decoding_tp, n_layers, d_model,
         expert_size = d_ff * 3 * d_model
         shared_experts_size_total = shared_experts_size / 1e12
         expert_size = expert_size / 1e12
+    elif "Qwen3" in model_name and hasattr(hf_config, "moe_intermediate_size"):
+        d_ff = hf_config.moe_intermediate_size
+        expert_size = d_ff * 3 * d_model
+        expert_size = expert_size / 1e12
     elif "DeepSeek" in model_name and hasattr(hf_config, "moe_intermediate_size") and hasattr(hf_config, "intermediate_size") and hasattr(hf_config, "first_k_dense_replace"):
         d_ff = hf_config.moe_intermediate_size
         d_ff_dense = hf_config.intermediate_size
@@ -314,11 +318,16 @@ def _calculate_batch_metrics(outputs, decoding_tp, n_layers, d_model,
         deepseek_dense_ffn_size = d_ff_dense * 3 * d_model / 1e12
     
     # Calculate S-MBU and S-MFU
-    if "Qwen" in model_name:
+    if "Qwen" in model_name and not "Qwen3" in model_name:
         smbu = ((n_layers*(avg_activated_experts * expert_size + shared_experts_size_total + attention_size_per_token) + 
                 kv_size) * precision/ (batch_size / decoding_tp)) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
         smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size + shared_experts_size_total) + attention_score) \
-            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    elif "Qwen3" in model_name:
+        smbu = ((n_layers * (avg_activated_experts * expert_size + attention_size_per_token) + 
+                kv_size) * precision/ (batch_size / decoding_tp)) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+        smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size) + attention_score) \
+            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
     elif "DeepSeek" in model_name:
         smbu = ((n_layers * attention_size_per_token + deepseek_sparse_layer_num * \
                 (avg_activated_experts * expert_size + shared_experts_size_total) + \
@@ -327,12 +336,12 @@ def _calculate_batch_metrics(outputs, decoding_tp, n_layers, d_model,
         smfu = (n_layers * attention_size_per_token + deepseek_sparse_layer_num * \
                 (n_experts_per_tok * expert_size + shared_experts_size_total) + \
                 deepseek_num_dense_layer * deepseek_dense_ffn_size + attention_score) \
-                * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+                * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
     else:
         smbu = ((n_layers*(avg_activated_experts * expert_size + attention_size_per_token) + 
                 kv_size) * precision/ (batch_size / decoding_tp) ) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
         smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size) + attention_score) \
-            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
     
     return {
         'smbu': smbu,
@@ -341,134 +350,450 @@ def _calculate_batch_metrics(outputs, decoding_tp, n_layers, d_model,
         'decoding_throughput': decoding_tp
     }
 
+def only_prefill_metrics(outputs, batch_size):
+    output_data = _extract_output_data(outputs)
+    ttft, prefill_tp = _calculate_throughput_metrics(batch_size, output_data['prefill_lengths'],
+                                                       output_data['max_duration'])
+    return {
+        'prefill_smbu': 0,
+        'prefill_smfu': 0,
+        'decoding_smbu': 0,
+        'decoding_smfu': 0,
+        'kv_size': 0,
+        'decoding_throughput': 0,
+        'prefill_tp': prefill_tp,
+        'ttft': ttft
+    }
+
+    
+
 def _calculate_batch_metrics_sglang(outputs, decoding_tp, n_layers, d_model, 
                                 n_attn_heads, d_head, n_kv_heads, n_experts_per_tok, d_ff, 
                                 avg_activated_experts, hf_config, num_gpus, model_name, 
-                                used_dtype, batch_size, precision):
+                                used_dtype, batch_size, precision, ttft=None, prefill_tp=None):
     """Calculate metrics for a batch of outputs"""
+    # Initialize hardware specs and output lists
+    hardware_specs = _get_hardware_specs(used_dtype)
+    output_data = _extract_output_data(outputs)
+    
+    # Calculate model-specific sizes
+    per_token_kv_size = _calculate_kv_size(model_name, hf_config, n_layers, d_head, n_kv_heads)
+    attention_size_per_token = _calculate_attention_size(model_name, hf_config, d_model, n_attn_heads, d_head, n_kv_heads)
+    expert_config = _calculate_expert_config(model_name, hf_config, d_ff, d_model, n_layers)
+    
+    # Process outputs and calculate metrics
+    metrics_data = _process_outputs(output_data, per_token_kv_size, attention_size_per_token, 
+                                  model_name, hf_config, n_layers, n_attn_heads, d_head)
+
+    # Calculate throughput metrics
+    if ttft is None or prefill_tp is None:
+        ttft, prefill_tp = _calculate_throughput_metrics(batch_size, output_data['prefill_lengths'],
+                                                       output_data['max_duration'])
+
+    
+    # Calculate S-MBU and S-MFU
+    smbu_smfu_metrics = _calculate_smbu_smfu(model_name, n_layers, attention_size_per_token,
+                                           expert_config, avg_activated_experts, metrics_data,
+                                           hardware_specs, num_gpus, precision, ttft, prefill_tp,
+                                           batch_size, decoding_tp)
+    
+    return {
+        'prefill_smbu': smbu_smfu_metrics['prefill_smbu'],
+        'prefill_smfu': smbu_smfu_metrics['prefill_smfu'],
+        'decoding_smbu': smbu_smfu_metrics['decoding_smbu'],
+        'decoding_smfu': smbu_smfu_metrics['decoding_smfu'],
+        'kv_size': metrics_data['true_kv_size'],
+        'decoding_throughput': decoding_tp,
+        'prefill_tp': prefill_tp,
+        'ttft': ttft
+    }
+
+
+def _get_hardware_specs(used_dtype):
+    """Get hardware specifications"""
     gpu_type = get_gpu_details()
-    hardware_specs = {
+    return {
         "peak_bandwidth_tb": get_peak_bw(gpu_type) / 1e12,
         "peak_flops_tf": get_peak_flops(gpu_type, precision=used_dtype) / 1e12,
     }
+
+
+def _extract_output_data(outputs):
+    """Extract relevant data from outputs"""
+    prefill_lengths = []
+    output_lengths = []
+    max_duration = 0.0
+    
+    for x in outputs:
+        output_lengths.append(x['meta_info']['completion_tokens'])
+        prefill_lengths.append(x['meta_info']['prompt_tokens'])
+        max_duration = max(max_duration, x['meta_info']['e2e_latency'])
+    
+    return {
+        'prefill_lengths': prefill_lengths,
+        'output_lengths': output_lengths,
+        'max_duration': max_duration
+    }
+
+
+def _calculate_kv_size(model_name, hf_config, n_layers, d_head, n_kv_heads):
+    """Calculate per-token KV size based on model type"""
+    if "DeepSeek" in model_name and hasattr(hf_config, "kv_lora_rank") and hasattr(hf_config, "qk_rope_head_dim"):
+        return n_layers * (hf_config.kv_lora_rank + hf_config.qk_rope_head_dim)
+    return 2 * n_layers * d_head * n_kv_heads
+
+
+def _calculate_attention_size(model_name, hf_config, d_model, n_attn_heads, d_head, n_kv_heads):
+    """Calculate attention size per token based on model type"""
+    if ("DeepSeek" in model_name and 
+        hasattr(hf_config, "qk_rope_head_dim") and 
+        hasattr(hf_config, "qk_nope_head_dim") and 
+        hasattr(hf_config, "v_head_dim") and 
+        hasattr(hf_config, "kv_lora_rank")):
+        
+        return _calculate_deepseek_attention_size(hf_config, d_model, n_attn_heads)
+    
+    return (d_model * (n_attn_heads * d_head + n_kv_heads * d_head * 2) + 
+            n_attn_heads * d_head * d_model) / 1e12
+
+
+def _calculate_deepseek_attention_size(hf_config, d_model, n_attn_heads):
+    """Calculate DeepSeek-specific attention size"""
+    q_head_dim = hf_config.qk_rope_head_dim + hf_config.qk_nope_head_dim
+    
+    base_size = ((d_model * (hf_config.kv_lora_rank + hf_config.qk_rope_head_dim)) +
+                (hf_config.kv_lora_rank * n_attn_heads * 
+                 (q_head_dim - hf_config.qk_rope_head_dim + hf_config.v_head_dim)) +
+                (hf_config.v_head_dim * n_attn_heads * d_model))
+    
+    if hasattr(hf_config, "q_lora_rank") and hf_config.q_lora_rank:
+        q_size = (d_model * hf_config.q_lora_rank + 
+                 hf_config.q_lora_rank * n_attn_heads * q_head_dim)
+    else:
+        q_size = d_model * n_attn_heads * q_head_dim
+    
+    return (base_size + q_size) / 1e12
+
+
+def _calculate_expert_config(model_name, hf_config, d_ff, d_model, n_layers):
+    """Calculate expert configuration based on model type"""
+    config = {
+        'expert_size': d_ff * 3 * d_model / 1e12,
+        'shared_experts_size_total': 0,
+        'deepseek_dense_ffn_size': 0,
+        'deepseek_sparse_layer_num': 0,
+        'deepseek_num_dense_layer': 0
+    }
+    
+    if "Qwen" in model_name and not "Qwen3" in model_name:
+        config.update(_get_qwen_expert_config(hf_config, d_model))
+    elif "Qwen3" in model_name:
+        config.update(_get_qwen3_expert_config(hf_config, d_model))
+    elif "DeepSeek" in model_name:
+        config.update(_get_deepseek_expert_config(hf_config, d_model, n_layers))
+    
+    return config
+
+
+def _get_qwen_expert_config(hf_config, d_model):
+    """Get Qwen-specific expert configuration"""
+    if (hasattr(hf_config, "moe_intermediate_size") and 
+        hasattr(hf_config, "shared_expert_intermediate_size")):
+        
+        return {
+            'expert_size': hf_config.moe_intermediate_size * 3 * d_model / 1e12,
+            'shared_experts_size_total': hf_config.shared_expert_intermediate_size * 3 * d_model / 1e12
+        }
+    return {}
+
+
+def _get_qwen3_expert_config(hf_config, d_model):
+    """Get Qwen3-specific expert configuration"""
+    if hasattr(hf_config, "moe_intermediate_size"):
+        return {
+            'expert_size': hf_config.moe_intermediate_size * 3 * d_model / 1e12
+        }
+    return {}
+
+
+def _get_deepseek_expert_config(hf_config, d_model, n_layers):
+    """Get DeepSeek-specific expert configuration"""
+    if (hasattr(hf_config, "moe_intermediate_size") and 
+        hasattr(hf_config, "intermediate_size") and 
+        hasattr(hf_config, "first_k_dense_replace")):
+        
+        deepseek_num_dense_layer = hf_config.first_k_dense_replace
+        return {
+            'expert_size': hf_config.moe_intermediate_size * 3 * d_model / 1e12,
+            'shared_experts_size_total': hf_config.moe_intermediate_size * 3 * d_model * 2 / 1e12,
+            'deepseek_dense_ffn_size': hf_config.intermediate_size * 3 * d_model / 1e12,
+            'deepseek_sparse_layer_num': n_layers - deepseek_num_dense_layer,
+            'deepseek_num_dense_layer': deepseek_num_dense_layer
+        }
+    return {}
+
+
+def _process_outputs(output_data, per_token_kv_size, attention_size_per_token, 
+                    model_name, hf_config, n_layers, n_attn_heads, d_head):
+    """Process outputs to calculate KV sizes and attention scores"""
     kvs = []
     true_kvs = []
-    attn_score = []
-    tpots: List[float] = []
-    # ttfts: List[float] = []
-    # e2e_latencies: List[float] = []
+    attn_scores = []
     
-    # Calculate KV sizes
-    per_token_kv_size = 2 * n_layers * d_head * n_kv_heads  # Default calculation
-    
-    if "DeepSeek" in model_name:
-        if hasattr(hf_config, "kv_lora_rank") and hasattr(hf_config, "qk_rope_head_dim"):
-            per_token_kv_size = n_layers * (hf_config.kv_lora_rank + hf_config.qk_rope_head_dim)
-    
-    # Process each output
-    for x in outputs:
-        output_len = x['meta_info']['completion_tokens']
-        context_prefill_size = x['meta_info']['prompt_tokens']
-    
-        # Calculate attention scores
-        if "DeepSeek" in model_name and hasattr(hf_config, "qk_rope_head_dim") and hasattr(hf_config, "qk_nope_head_dim") and hasattr(hf_config, "v_head_dim"):
-            q_head_dim = hf_config.qk_rope_head_dim + hf_config.qk_nope_head_dim
-            origin_per_token_k_state_size = n_layers * n_attn_heads * q_head_dim
-            origin_per_token_v_state_size = n_layers * n_attn_heads * hf_config.v_head_dim
-            attention_score = context_prefill_size * origin_per_token_k_state_size + (output_len - 1) * origin_per_token_k_state_size / 2
-            attention_score += context_prefill_size * origin_per_token_v_state_size + (output_len - 1) * origin_per_token_v_state_size / 2
-            attention_score = attention_score / 1e12
-        else:
-            origin_per_token_kv_states_size = n_layers * n_attn_heads * d_head
-            attention_score = context_prefill_size * origin_per_token_kv_states_size + (output_len - 1) * origin_per_token_kv_states_size / 2
-            attention_score = attention_score * 2 / 1e12
-        # Store attention scores and KV sizes
-        attn_score.append(attention_score)
-        kv_size = context_prefill_size * per_token_kv_size + (output_len - 1) * per_token_kv_size / 2
-        kv_size = kv_size / 1e12
-        true_kv = (context_prefill_size * per_token_kv_size + output_len * per_token_kv_size) / 1e12 * 1e3
+    for prefill_len, output_len in zip(output_data['prefill_lengths'], output_data['output_lengths']):
+        # Calculate attention score
+        attn_score = _calculate_attention_score(model_name, hf_config, prefill_len, output_len,
+                                              n_layers, n_attn_heads, d_head)
+        attn_scores.append(attn_score)
+        
+        # Calculate KV sizes
+        kv_size = (prefill_len * per_token_kv_size + (output_len - 1) * per_token_kv_size / 2) / 1e12
+        true_kv = (prefill_len * per_token_kv_size + output_len * per_token_kv_size) / 1e9
+        
         kvs.append(kv_size)
         true_kvs.append(true_kv)
     
-    # Calculate aggregate values
-    kv_size = sum(kvs)
-    true_kv_size = sum(true_kvs) * 1e3
-    attention_score = sum(attn_score) / len(attn_score)
-    ttft = 0
-    
-    # Calculate attention size per token
-    if "DeepSeek" in model_name and hasattr(hf_config, "qk_rope_head_dim") and hasattr(hf_config, "qk_nope_head_dim") and hasattr(hf_config, "v_head_dim") and hasattr(hf_config, "kv_lora_rank"):
+    return {
+        'kv_size': sum(kvs),
+        'true_kv_size': sum(true_kvs) * 1e3,
+        'attention_score': sum(attn_scores) / len(attn_scores)
+    }
+
+
+def _calculate_attention_score(model_name, hf_config, prefill_len, output_len, 
+                             n_layers, n_attn_heads, d_head):
+    """Calculate attention score for a single output"""
+    if ("DeepSeek" in model_name and 
+        hasattr(hf_config, "qk_rope_head_dim") and 
+        hasattr(hf_config, "qk_nope_head_dim") and 
+        hasattr(hf_config, "v_head_dim")):
+        
         q_head_dim = hf_config.qk_rope_head_dim + hf_config.qk_nope_head_dim
-        if not hasattr(hf_config, "q_lora_rank") or not hf_config.q_lora_rank:
-            attention_size_per_token = (d_model * n_attn_heads * q_head_dim) + \
-                (d_model * (hf_config.kv_lora_rank + hf_config.qk_rope_head_dim)) + \
-                    (hf_config.kv_lora_rank * n_attn_heads * (q_head_dim - hf_config.qk_rope_head_dim + hf_config.v_head_dim)) + \
-                        (hf_config.v_head_dim * n_attn_heads * d_model)
-            attention_size_per_token = attention_size_per_token / 1e12
-        else:
-            attention_size_per_token = (d_model * hf_config.q_lora_rank) + \
-                (hf_config.q_lora_rank * n_attn_heads * q_head_dim) + \
-                    (d_model * (hf_config.kv_lora_rank + hf_config.qk_rope_head_dim)) + \
-                        (hf_config.kv_lora_rank * n_attn_heads * (q_head_dim - hf_config.qk_rope_head_dim + hf_config.v_head_dim)) + \
-                            (hf_config.v_head_dim * n_attn_heads * d_model)
-            attention_size_per_token = attention_size_per_token / 1e12
+        k_size = n_layers * n_attn_heads * q_head_dim
+        v_size = n_layers * n_attn_heads * hf_config.v_head_dim
+        
+        score = (prefill_len * k_size + (output_len - 1) * k_size / 2 +
+                prefill_len * v_size + (output_len - 1) * v_size / 2)
     else:
-        attention_size_per_token = d_model * (n_attn_heads * d_head + n_kv_heads * d_head * 2) + n_attn_heads * d_head * d_model
-        attention_size_per_token = attention_size_per_token / 1e12
+        kv_size = n_layers * n_attn_heads * d_head
+        score = (prefill_len * kv_size + (output_len - 1) * kv_size / 2) * 2
     
-    # Calculate expert sizes
-    expert_size = d_ff * 3 * d_model / 1e12
-    shared_experts_size_total = 0
-    deepseek_dense_ffn_size = 0
-    deepseek_sparse_layer_num = 0
+    return score / 1e12
+
+
+def _calculate_throughput_metrics(batch_size, prefill_lengths, max_duration):
+    """Calculate throughput metrics"""
+    total_prefill = sum(prefill_lengths)
+    prefill_tp = total_prefill / (max_duration)
+    ttft = max_duration / batch_size
+    return ttft, prefill_tp
+
+
+def _calculate_smbu_smfu(model_name, n_layers, attention_size_per_token, expert_config,
+                        avg_activated_experts, metrics_data, hardware_specs, num_gpus,
+                        precision, ttft, prefill_tp, batch_size, decoding_tp):
+    """Calculate S-MBU and S-MFU metrics"""
+    prefill_activation = avg_activated_experts[1]
+    decode_steps_activation = avg_activated_experts[2:]
     
-    if "Qwen" in model_name and hasattr(hf_config, "moe_intermediate_size") and hasattr(hf_config, "shared_expert_intermediate_size"):
-        d_ff = hf_config.moe_intermediate_size
-        d_ff_share = hf_config.shared_expert_intermediate_size
-        shared_experts_size = d_ff_share * 3 * d_model
-        expert_size = d_ff * 3 * d_model
-        shared_experts_size_total = shared_experts_size / 1e12
-        expert_size = expert_size / 1e12
-    elif "DeepSeek" in model_name and hasattr(hf_config, "moe_intermediate_size") and hasattr(hf_config, "intermediate_size") and hasattr(hf_config, "first_k_dense_replace"):
-        d_ff = hf_config.moe_intermediate_size
-        d_ff_dense = hf_config.intermediate_size
-        deepseek_num_dense_layer = hf_config.first_k_dense_replace
-        shared_experts_size = d_ff * 3 * d_model
-        expert_size = d_ff * 3 * d_model
-        shared_experts = 2
-        shared_experts_size_total = shared_experts_size * shared_experts / 1e12
-        expert_size = expert_size / 1e12
-        deepseek_sparse_layer_num = n_layers - deepseek_num_dense_layer
-        deepseek_dense_ffn_size = d_ff_dense * 3 * d_model / 1e12
+    # Calculate prefill metrics
+    prefill_smbu, prefill_smfu = _calculate_prefill_metrics(
+        model_name, n_layers, attention_size_per_token, expert_config,
+        prefill_activation, metrics_data['attention_score'], hardware_specs,
+        num_gpus, precision, ttft, prefill_tp
+    )
     
-    # Calculate S-MBU and S-MFU
-    if "Qwen" in model_name:
-        smbu = ((n_layers*(avg_activated_experts * expert_size + shared_experts_size_total + attention_size_per_token) + 
-                kv_size) * precision/ (batch_size / decoding_tp)) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
-        smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size + shared_experts_size_total) + attention_score) \
-            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
-    elif "DeepSeek" in model_name:
-        smbu = ((n_layers * attention_size_per_token + deepseek_sparse_layer_num * \
-                (avg_activated_experts * expert_size + shared_experts_size_total) + \
-                deepseek_num_dense_layer * deepseek_dense_ffn_size + \
-                kv_size) * precision/ (batch_size / decoding_tp)) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
-        smfu = (n_layers * attention_size_per_token + deepseek_sparse_layer_num * \
-                (n_experts_per_tok * expert_size + shared_experts_size_total) + \
-                deepseek_num_dense_layer * deepseek_dense_ffn_size + attention_score) \
-                * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
-    else:
-        smbu = ((n_layers*(avg_activated_experts * expert_size + attention_size_per_token) + 
-                kv_size) * precision/ (batch_size / decoding_tp) ) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
-        smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size) + attention_score) \
-            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+    # Calculate decoding metrics
+    decoding_smbu, decoding_smfu = _calculate_decoding_metrics(
+        model_name, n_layers, attention_size_per_token, expert_config,
+        decode_steps_activation, metrics_data, hardware_specs,
+        num_gpus, precision, batch_size, decoding_tp
+    )
     
     return {
-        'smbu': smbu,
-        'smfu': smfu,
-        'kv_size': true_kv_size,
-        'decoding_throughput': decoding_tp,
-        'ttft': ttft
+        'prefill_smbu': prefill_smbu,
+        'prefill_smfu': prefill_smfu,
+        'decoding_smbu': decoding_smbu,
+        'decoding_smfu': decoding_smfu
     }
+
+
+def _calculate_prefill_metrics(model_name, n_layers, attention_size_per_token, expert_config,
+                             prefill_activation, attention_score, hardware_specs,
+                             num_gpus, precision, ttft, prefill_tp):
+    """Calculate prefill S-MBU and S-MFU"""
+    model_calculators = {
+        'Qwen': _calculate_qwen_prefill,
+        'Qwen3': _calculate_qwen3_prefill,
+        'DeepSeek': _calculate_deepseek_prefill
+    }
+    
+    for model_type, calculator in model_calculators.items():
+        if model_type in model_name and (model_type != 'Qwen' or 'Qwen3' not in model_name):
+            return calculator(n_layers, attention_size_per_token, expert_config,
+                            prefill_activation, attention_score, hardware_specs,
+                            num_gpus, precision, ttft, prefill_tp)
+    
+    # Default case
+    return _calculate_default_prefill(n_layers, attention_size_per_token, expert_config,
+                                    prefill_activation, attention_score, hardware_specs,
+                                    num_gpus, precision, ttft, prefill_tp)
+
+
+def _calculate_decoding_metrics(model_name, n_layers, attention_size_per_token, expert_config,
+                              decode_steps_activation, metrics_data, hardware_specs,
+                              num_gpus, precision, batch_size, decoding_tp):
+    """Calculate decoding S-MBU and S-MFU"""
+    decoding_smbus = []
+    
+    for activation in decode_steps_activation:
+        if "Qwen" in model_name and "Qwen3" not in model_name:
+            smbu, smfu = _calculate_qwen_decoding(n_layers, attention_size_per_token, expert_config,
+                                                activation, metrics_data, hardware_specs, num_gpus,
+                                                precision, batch_size, decoding_tp)
+        elif "Qwen3" in model_name:
+            smbu, smfu = _calculate_qwen3_decoding(n_layers, attention_size_per_token, expert_config,
+                                                 activation, metrics_data, hardware_specs, num_gpus,
+                                                 precision, batch_size, decoding_tp)
+        elif "DeepSeek" in model_name:
+            smbu, smfu = _calculate_deepseek_decoding(n_layers, attention_size_per_token, expert_config,
+                                                    activation, metrics_data, hardware_specs, num_gpus,
+                                                    precision, batch_size, decoding_tp)
+        else:
+            smbu, smfu = _calculate_default_decoding(n_layers, attention_size_per_token, expert_config,
+                                                   activation, metrics_data, hardware_specs, num_gpus,
+                                                   precision, batch_size, decoding_tp)
+        decoding_smbus.append(smbu)
+    
+    return sum(decoding_smbus) / len(decoding_smbus), smfu
+
+
+# Helper functions for specific model calculations
+def _calculate_qwen_prefill(n_layers, attention_size_per_token, expert_config, prefill_activation,
+                          attention_score, hardware_specs, num_gpus, precision, ttft, prefill_tp):
+    smbu_numerator = (n_layers * (prefill_activation * expert_config['expert_size'] + 
+                                expert_config['shared_experts_size_total'] + 
+                                attention_size_per_token)) * precision / ttft
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = (n_layers * (attention_size_per_token + expert_config['expert_size'] + 
+                                expert_config['shared_experts_size_total']) + attention_score) * 2 * prefill_tp
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_qwen3_prefill(n_layers, attention_size_per_token, expert_config, prefill_activation,
+                           attention_score, hardware_specs, num_gpus, precision, ttft, prefill_tp):
+    smbu_numerator = (n_layers * (prefill_activation * expert_config['expert_size'] + 
+                                attention_size_per_token)) * precision / ttft
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = (n_layers * (attention_size_per_token + expert_config['expert_size']) + 
+                     attention_score) * 2 * prefill_tp
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_deepseek_prefill(n_layers, attention_size_per_token, expert_config, prefill_activation,
+                              attention_score, hardware_specs, num_gpus, precision, ttft, prefill_tp):
+    smbu_numerator = ((n_layers * attention_size_per_token + 
+                      expert_config['deepseek_sparse_layer_num'] * 
+                      (prefill_activation * expert_config['expert_size'] + 
+                       expert_config['shared_experts_size_total']) + 
+                      expert_config['deepseek_num_dense_layer'] * 
+                      expert_config['deepseek_dense_ffn_size']) * precision / ttft)
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = ((n_layers * attention_size_per_token + 
+                      expert_config['deepseek_sparse_layer_num'] * 
+                      (expert_config['expert_size'] + expert_config['shared_experts_size_total']) + 
+                      expert_config['deepseek_num_dense_layer'] * 
+                      expert_config['deepseek_dense_ffn_size'] + attention_score) * 2 * prefill_tp)
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_default_prefill(n_layers, attention_size_per_token, expert_config, prefill_activation,
+                             attention_score, hardware_specs, num_gpus, precision, ttft, prefill_tp):
+    # Default implementation
+    smbu_numerator = (n_layers * (prefill_activation * expert_config['expert_size'] + 
+                                attention_size_per_token)) * precision / ttft
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = (n_layers * (attention_size_per_token + expert_config['expert_size']) + 
+                     attention_score) * 2 * prefill_tp
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_qwen_decoding(n_layers, attention_size_per_token, expert_config, activation,
+                           metrics_data, hardware_specs, num_gpus, precision, batch_size, decoding_tp):
+    smbu_numerator = ((n_layers * (activation * expert_config['expert_size'] + 
+                                 expert_config['shared_experts_size_total'] + 
+                                 attention_size_per_token) + 
+                      metrics_data['kv_size']) * precision / (batch_size / decoding_tp))
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = ((n_layers * (attention_size_per_token + expert_config['expert_size'] + 
+                                 expert_config['shared_experts_size_total']) + 
+                      metrics_data['attention_score']) * 2 * decoding_tp)
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_qwen3_decoding(n_layers, attention_size_per_token, expert_config, activation,
+                            metrics_data, hardware_specs, num_gpus, precision, batch_size, decoding_tp):
+    smbu_numerator = ((n_layers * (activation * expert_config['expert_size'] + 
+                                 attention_size_per_token) + 
+                      metrics_data['kv_size']) * precision / (batch_size / decoding_tp))
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = ((n_layers * (attention_size_per_token + expert_config['expert_size']) + 
+                      metrics_data['attention_score']) * 2 * decoding_tp)
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_deepseek_decoding(n_layers, attention_size_per_token, expert_config, activation,
+                               metrics_data, hardware_specs, num_gpus, precision, batch_size, decoding_tp):
+    smbu_numerator = ((n_layers * attention_size_per_token + 
+                      expert_config['deepseek_sparse_layer_num'] * 
+                      (activation * expert_config['expert_size'] + 
+                       expert_config['shared_experts_size_total']) + 
+                      expert_config['deepseek_num_dense_layer'] * 
+                      expert_config['deepseek_dense_ffn_size'] + 
+                      metrics_data['kv_size']) * precision / (batch_size / decoding_tp))
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = ((n_layers * attention_size_per_token + 
+                      expert_config['deepseek_sparse_layer_num'] * 
+                      (expert_config['expert_size'] + expert_config['shared_experts_size_total']) + 
+                      expert_config['deepseek_num_dense_layer'] * 
+                      expert_config['deepseek_dense_ffn_size'] + 
+                      metrics_data['attention_score']) * 2 * decoding_tp)
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
+
+
+def _calculate_default_decoding(n_layers, attention_size_per_token, expert_config, activation,
+                              metrics_data, hardware_specs, num_gpus, precision, batch_size, decoding_tp):
+    smbu_numerator = ((n_layers * (activation * expert_config['expert_size'] + 
+                                 attention_size_per_token) + 
+                      metrics_data['kv_size']) * precision / (batch_size / decoding_tp))
+    smbu = smbu_numerator / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+    
+    smfu_numerator = ((n_layers * (attention_size_per_token + expert_config['expert_size']) + 
+                      metrics_data['attention_score']) * 2 * decoding_tp)
+    smfu = smfu_numerator / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    
+    return smbu, smfu
 
 def _calculate_batch_metrics_hflm(output_len, context_prefill_size, decoding_tp, n_layers, d_model, 
                                 n_attn_heads, d_head, n_kv_heads, n_experts_per_tok, d_ff, 
@@ -543,6 +868,10 @@ def _calculate_batch_metrics_hflm(output_len, context_prefill_size, decoding_tp,
         expert_size = d_ff * 3 * d_model
         shared_experts_size_total = shared_experts_size / 1e12
         expert_size = expert_size / 1e12
+    elif "Qwen3" in model_name and hasattr(hf_config, "moe_intermediate_size"):
+        d_ff = hf_config.moe_intermediate_size
+        expert_size = d_ff * 3 * d_model
+        expert_size = expert_size / 1e12
     elif "DeepSeek" in model_name and hasattr(hf_config, "moe_intermediate_size") and hasattr(hf_config, "intermediate_size") and hasattr(hf_config, "first_k_dense_replace"):
         d_ff = hf_config.moe_intermediate_size
         d_ff_dense = hf_config.intermediate_size
@@ -560,7 +889,12 @@ def _calculate_batch_metrics_hflm(output_len, context_prefill_size, decoding_tp,
         smbu = ((n_layers*(avg_activated_experts * expert_size + shared_experts_size_total + attention_size_per_token) + 
                 kv_size) * precision/(batch_size / decoding_tp) ) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
         smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size + shared_experts_size_total) + attention_score) \
-            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
+    elif "Qwen3" in model_name:
+        smbu = ((n_layers * (avg_activated_experts * expert_size + attention_size_per_token) + 
+                kv_size) * precision/(batch_size / decoding_tp) ) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
+        smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size) + attention_score) \
+            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
     elif "DeepSeek" in model_name:
         smbu = ((n_layers * attention_size_per_token + deepseek_sparse_layer_num * \
                 (avg_activated_experts * expert_size + shared_experts_size_total) + \
@@ -569,12 +903,12 @@ def _calculate_batch_metrics_hflm(output_len, context_prefill_size, decoding_tp,
         smfu = (n_layers * attention_size_per_token + deepseek_sparse_layer_num * \
                 (n_experts_per_tok * expert_size + shared_experts_size_total) + \
                 deepseek_num_dense_layer * deepseek_dense_ffn_size + attention_score) \
-                * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+                * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
     else:
         smbu = ((n_layers*(avg_activated_experts * expert_size + attention_size_per_token) + 
                 kv_size) * precision/(batch_size / decoding_tp) ) / (num_gpus * hardware_specs['peak_bandwidth_tb'])
         smfu = (n_layers * (attention_size_per_token + n_experts_per_tok * expert_size) + attention_score) \
-            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'])
+            * 2 * decoding_tp / (num_gpus * hardware_specs['peak_flops_tf'] / 2)
     
     return {
         'smbu': smbu,

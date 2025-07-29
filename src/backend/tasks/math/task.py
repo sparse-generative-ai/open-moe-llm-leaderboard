@@ -28,11 +28,6 @@ def load_questions(question_file: str):
                 questions.append(json.loads(line))
     return questions
 
-def download_wrapper(func):
-    def download(self, *args, **kwargs):
-        print("No need to download")
-    return download
-
 def load_jsonl(question_file: str):
     """Load questions from a file."""
     questions = []
@@ -44,9 +39,6 @@ def load_jsonl(question_file: str):
                 model_answers.append(json.loads(line)["solution"])
     return questions, model_answers
 
-
-original_download = ConfigurableTask.download
-ConfigurableTask.download = download_wrapper(original_download)
 # @register_task("selfcheckgpt")
 @measure_system_metrics
 class MATH(ConfigurableTask):
@@ -68,6 +60,9 @@ class MATH(ConfigurableTask):
         #     "until": ["<im_end>", "<im_end>"],
         #     "max_length": 1024,
         # }
+    
+    def download(self, *args, **kwargs):
+        print("No need to download")
 
     def transform_data(self, questions, answers):
         transformed_data = []
