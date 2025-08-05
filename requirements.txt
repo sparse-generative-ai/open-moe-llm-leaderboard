@@ -27,7 +27,7 @@ rouge_score
 bert-score
 evaluate
 spacy==3.7.4
-torch==2.6.0
+torch
 selfcheckgpt
 immutabledict
 gputil
