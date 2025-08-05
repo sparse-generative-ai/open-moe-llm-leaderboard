@@ -51,10 +51,10 @@ pip install pydantic==2.6.4 # Resolves a dependency conflict with moe-infinity
 python -m spacy download en # Required for selfcheckgpt
 
 # Install vLLM (only support up to v0.8.4)
-pip install vllm==0.8.4
+pip install vllm
 
 # Install SGLang
-git clone -b v0.4.6.post4 https://github.com/sgl-project/sglang.git
+git clone -b v0.4.10.post4 https://github.com/sgl-project/sglang.git
 cd sglang
 pip install --upgrade pip
 pip install -e "python[all]"
@@ -81,8 +81,31 @@ In brief:
 3. Finally, the Gradio interface retrieves and displays these results to the users.
 
 # Quick Start
-## Profiling Expert Activation
-Script is in `record_experts.py`.
+## Profiling Expert Activation (Runtime Profiling)
+### SGLang
+First lunch a custom SGLang server using `sglang_custom_server.py`
+```bash
+python sglang_custom_server.py --model-path Qwen/Qwen3-30B-A3B --port 30000 --expert-distribution-recorder-mode stat --tp-size 4
+
+python sglang_expert_record.py --model_name Qwen/Qwen3-30B-A3B --task gsm8k --port 30000 --output_dir <YOUR_OUTPUT_DIR>
+```
+This will give a result for all metrics and saved it in `$output_dir/$model_name/`. The result looks like:
+```json
+{
+    "prefill_smbu": 0.11345000059827241,
+    "prefill_smfu": 0.00612954246852147,
+    "decoding_smbu": 0.30334991626942426,
+    "decoding_smfu": 0.01143814977338437,
+    "kv_size": 1038.799277419355,
+    "decoding_throughput": 2238.8945290093984,
+    "prefill_tp": 3234.5384657550935,
+    "ttft": 0.1051412699694717,
+    "tpot": 0.05077562966375793
+}
+```
+
+### Huggingface Transformers
+Script is in `record_experts.py`.`
 Quickly run by:
 ```bash
 python record_experts.py --model Qwen/Qwen3-235B-A22B --batch_size 16 --task MATH
